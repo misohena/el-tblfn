@@ -1,0 +1,55 @@
+#+TITLE: Simple Data Table Functions for Emacs TODO List
+
+* Inbox
+** TODO calc-evalで実行する式に「引数」を渡す方法を調べる
+** TODO 日付に対応する
+** TODO tblfn-add-sum-column
+** TODO tblfn-add-vcalc-column
+** TODO tblfn-add-calc-column
+** TODO tblfn-add-footer-vcalcでは列ごとに関数を指定できない
+** TODO insert-columns-at関数を実装する
+現状では[[elisp-function:tblfn-append-columns]]はあるけど途中に挿入できない。
+
+** TODO 多くのbody系関数でtable引数にnilを指定した結果の列名を何とかする
+現在はbodyを対象とした関数でtable引数にnilを指定した場合ヘッダーがnilなる。
+#+begin_src elisp :results pp
+(tblfn-add-body-row nil '(0 1 2))
+#+end_src
+
+#+RESULTS:
+: (nil hline (0 1 2))
+
+これはある意味当然の仕様にも思えるが、現実問題これでは列数が0になってしまうので、次のテーブル操作がまともにできない。[[elisp-function:tblfn-add-header-row]]はダミーの列名を生成すべきではないだろうか？
+
+** TODO 全体を文字列化する関数を追加する
+** TODO 全体を数値化する関数を追加する
+** TODO org-modeから使うときに数値を文字列のままにできないか
+* Finished
+** CANCELLED footerをできるだけキープすべき？
+CLOSED: [2026-01-03 Sat 23:40]
+無理。どうしても効率が悪くなるので、必要なら最後にくっつけるべき。
+(nconc (copy-sequence result-table) (tblfn-footer-hline-and-after original-table))
+** DONE README.orgを書く
+CLOSED: [2026-01-05 Mon 23:58]
+** DONE 計算結果を自動的に数値にすべきか
+CLOSED: [2026-01-06 Tue 12:16]
+
+tblfn-calc-result-number-type変数を追加した。
+** DONE キーワード引数を処理するマクロを作る
+CLOSED: [2026-01-06 Tue 20:58]
+cl-defunは、option,restとkeyを同時に使うのが困難。
+
+[[https://stackoverflow.com/questions/56712241/use-of-rest-and-key-at-the-same-time-in-common-lisp][use of &rest and &key at the same time in Common Lisp - Stack Overflow]]
+
+#+begin_src elisp
+(defun test (&rest args)
+  (let* ((keys (member-if #'keywordp args))
+         (nonkeys (ldiff args keys)))
+    (destructuring-bind (&key name) keys
+      (list nonkeys name))))
+#+end_src
+
+tblfn--let-argsを作った。
+** DONE tblfn-joinのキーワード引数化
+CLOSED: [2026-01-06 Tue 20:58]
+tblfn--let-argsを使った。

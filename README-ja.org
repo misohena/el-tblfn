@@ -1,0 +1,594 @@
+#+TITLE: tblfn.el - Simple data table functions for Emacs
+
+(Languages: [[file:README.org][en]], ja)
+
+* 概要
+
+Emacs Lispでリストのリストの形で表現されるデータテーブルを処理するための単純なライブラリです。たまに必要になる集計作業を学習コストが低い平易な構文で書けるように作りました。
+
+org-modeのテーブルをEmacs Lispのソースコードブロックから処理するために作りましたが、CSVの処理やその他の目的にも使用できます。
+
+* 使用例
+** org-modeテーブル
+*** 集計
+
+次のorg-modeテキストは、商品の一覧からカテゴリー毎の合計額を集計する例です。
+
+#+begin_src org
+,#+NAME: inventory
+| Product    | Category  | Quantity | Price |  Total | Supplier      |
+|------------+-----------+----------+-------+--------+---------------|
+| Apple      | Fruit     |       50 |   150 |   7500 | Tokyo Foods   |
+| Banana     | Fruit     |       80 |    80 |   6400 | Manila Export |
+| Orange     | Fruit     |      100 |   100 |  10000 | US Produce    |
+| Strawberry | Fruit     |       30 |   400 |  12000 | Tokyo Foods   |
+| Cabbage    | Vegetable |       40 |   120 |   4800 | Beijing Trade |
+| Carrot     | Vegetable |       60 |    90 |   5400 | Tokyo Foods   |
+| Tomato     | Vegetable |       45 |   200 |   9000 | Mexico Fresh  |
+| Lettuce    | Vegetable |       35 |   130 |   4550 | US Produce    |
+| Potato     | Vegetable |       70 |    80 |   5600 | Dutch Farms   |
+| Milk       | Dairy     |       25 |   220 |   5500 | Tokyo Foods   |
+| Cheese     | Dairy     |       15 |   450 |   6750 | Paris Dairy   |
+| Yogurt     | Dairy     |       40 |   180 |   7200 | Berlin Dairy  |
+| Chicken    | Meat      |       20 |   350 |   7000 | Brazil Meat   |
+| Pork       | Meat      |       18 |   400 |   7200 | Danish Farms  |
+| Beef       | Meat      |       10 |   800 |   8000 | Aussie Beef   |
+|------------+-----------+----------+-------+--------+---------------|
+|            |           |          |       | 106900 |               |
+,#+TBLFM: @>$5=vsum(@I..@II)
+
+,#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(require 'tblfn)
+(thread-first
+  (tblfn-aggregate inventory "Category" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage"))
+,#+end_src
+
+,#+RESULTS:
+| Category  |  Total | Percentage |
+|-----------+--------+------------|
+| Fruit     |  35900 |      33.58 |
+| Vegetable |  29350 |      27.46 |
+| Meat      |  22200 |      20.77 |
+| Dairy     |  19450 |      18.19 |
+|-----------+--------+------------|
+|           | 106900 |       100. |
+#+end_src
+
+*** 結合
+
+最初の表にサプライヤー情報を結合してみます。
+
+#+begin_src org
+...上からの続き
+
+,#+NAME: suppliers
+| Supplier      | Country     | Rating |
+|---------------+-------------+--------|
+| Tokyo Foods   | Japan       |      5 |
+| Manila Export | Philippines |      4 |
+| US Produce    | USA         |      4 |
+| Beijing Trade | China       |      3 |
+| Mexico Fresh  | Mexico      |      5 |
+| Dutch Farms   | Netherlands |      4 |
+| Paris Dairy   | France      |      5 |
+| Berlin Dairy  | Germany     |      4 |
+| Brazil Meat   | Brazil      |      4 |
+| Danish Farms  | Denmark     |      5 |
+| Aussie Beef   | Australia   |      4 |
+
+,#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier"))
+,#+end_src
+
+,#+RESULTS:
+| Product    | Category  | Quantity | Price | Total | Supplier      | Country     | Rating |
+|------------+-----------+----------+-------+-------+---------------+-------------+--------|
+| Apple      | Fruit     |       50 |   150 |  7500 | Tokyo Foods   | Japan       |      5 |
+| Banana     | Fruit     |       80 |    80 |  6400 | Manila Export | Philippines |      4 |
+| Orange     | Fruit     |      100 |   100 | 10000 | US Produce    | USA         |      4 |
+| Strawberry | Fruit     |       30 |   400 | 12000 | Tokyo Foods   | Japan       |      5 |
+| Cabbage    | Vegetable |       40 |   120 |  4800 | Beijing Trade | China       |      3 |
+| Carrot     | Vegetable |       60 |    90 |  5400 | Tokyo Foods   | Japan       |      5 |
+| Tomato     | Vegetable |       45 |   200 |  9000 | Mexico Fresh  | Mexico      |      5 |
+| Lettuce    | Vegetable |       35 |   130 |  4550 | US Produce    | USA         |      4 |
+| Potato     | Vegetable |       70 |    80 |  5600 | Dutch Farms   | Netherlands |      4 |
+| Milk       | Dairy     |       25 |   220 |  5500 | Tokyo Foods   | Japan       |      5 |
+| Cheese     | Dairy     |       15 |   450 |  6750 | Paris Dairy   | France      |      5 |
+| Yogurt     | Dairy     |       40 |   180 |  7200 | Berlin Dairy  | Germany     |      4 |
+| Chicken    | Meat      |       20 |   350 |  7000 | Brazil Meat   | Brazil      |      4 |
+| Pork       | Meat      |       18 |   400 |  7200 | Danish Farms  | Denmark     |      5 |
+| Beef       | Meat      |       10 |   800 |  8000 | Aussie Beef   | Australia   |      4 |
+#+end_src
+
+*** パーセンテージ
+
+そこから供給国毎の合計金額と構成比率を求めます。
+
+#+begin_src org
+,#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier")
+  (tblfn-aggregate "Country" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total"))
+,#+end_src
+
+,#+RESULTS:
+| Country     |  Total | Percentage |
+|-------------+--------+------------|
+| Japan       |  30400 |      28.44 |
+| USA         |  14550 |      13.61 |
+| Mexico      |   9000 |       8.42 |
+| Australia   |   8000 |       7.48 |
+| Germany     |   7200 |       6.74 |
+| Denmark     |   7200 |       6.74 |
+| Brazil      |   7000 |       6.55 |
+| France      |   6750 |       6.31 |
+| Philippines |   6400 |       5.99 |
+| Netherlands |   5600 |       5.24 |
+| China       |   4800 |       4.49 |
+|-------------+--------+------------|
+|             | 106900 |            |
+#+end_src
+
+*** カウント
+
+サプライヤーごとの供給商品数が知りたければ次のようにします。
+
+#+begin_src org
+,#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier")
+  (tblfn-count-by "Supplier" "Count")
+  (tblfn-sort "Count" t)
+  (tblfn-add-footer-sum "Count"))
+,#+end_src
+
+,#+RESULTS:
+| Supplier      | Count |
+|---------------+-------|
+| Tokyo Foods   |     4 |
+| US Produce    |     2 |
+| Manila Export |     1 |
+| Beijing Trade |     1 |
+| Mexico Fresh  |     1 |
+| Dutch Farms   |     1 |
+| Paris Dairy   |     1 |
+| Berlin Dairy  |     1 |
+| Brazil Meat   |     1 |
+| Danish Farms  |     1 |
+| Aussie Beef   |     1 |
+|---------------+-------|
+|               |    15 |
+#+end_src
+
+** CSVファイル
+
+org-modeだけでなくCSVファイルの処理にも使えます。
+
+#+begin_src elisp
+(thread-first
+  (tblfn-read-csv-file "inventory.csv")
+  ;; もしヘッダー行がないCSVなら次のようにして追加すべき:
+  ;; (tblfn-add-header-row '("Product" "Category" "Quantity" "Price" "Total" "Supplier"))
+  ;; (tblfn-insert-hline -1) ;; もしfooterがあるなら区切りを入れるべき。
+
+  ;; 供給元情報と結合する。
+  (tblfn-join (tblfn-read-csv-file "suppliers.csv") "Supplier")
+  (tblfn-write-csv-file "inventory-with-suppliers.csv")
+
+  ;; 継続して供給元毎の金額と割合を計算する。
+  (tblfn-aggregate "Supplier" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage")
+  (tblfn-write-csv-file "supplier-percentages.csv"))
+#+end_src
+
+CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-slice~ や ~tblfn-transpose~ 等が役に立つかもしれません。
+
+** その他の例
+
+[[file:example/example.org][example/example.org]]にも例があります。
+
+* 関数一覧
+
+- Pipeline Macro
+  - tblfn-process
+- Horizontal Lines (hlines)
+  - tblfn-hline-p
+  - tblfn-hline-count
+  - tblfn-nth-hline-and-after
+  - tblfn-last-hline-and-after
+  - tblfn-between-hlines
+  - tblfn-before-first-hline
+  - tblfn-insert-hline
+  - tblfn-add-hline
+- Row Types
+  - tblfn-non-data-row-p
+  - tblfn-data-row-p
+- Columns
+  - Column Metadata
+    - tblfn-column-count
+    - tblfn-column-names
+    - tblfn-column-name
+    - tblfn-column-index
+    - tblfn-set-all-column-names
+    - tblfn-rename-column
+    - tblfn--expand-column-references-in-sexp
+  - Column Structure
+    - tblfn-insert-column
+    - tblfn-add-column
+    - tblfn-append-columns
+    - tblfn-remove-columns
+  - Column Operations
+    - tblfn-column-fields
+    - tblfn-column-sum
+    - tblfn-column-vcalc
+    - tblfn-select-columns
+- Fields (Cell Access)
+  - tblfn-body-field-at
+  - tblfn-field-at
+  - tblfn-set-body-field-at
+  - tblfn-set-field-at
+- Sections
+  - Header
+    - tblfn-after-header
+    - tblfn-insert-header-hline
+    - tblfn-add-header-row
+  - Footer
+    - tblfn-footer-hline-and-after
+    - tblfn-remove-footer
+    - tblfn-remove-last-row
+  - Body
+    - tblfn-mapc-body-row
+    - tblfn-map-body-row
+    - tblfn-body-row-count
+    - tblfn-body-row-index-to-table-row-index
+    - tblfn-body
+    - tblfn-take-body-rows-and-rest
+    - tblfn-data-rows-before-last-hline
+- Row Operations
+  - Row Insertion
+    - tblfn-add-body-row
+    - tblfn-add-row
+    - tblfn-insert-nth-body-row
+    - tblfn-insert-nth-row
+  - Row Removal
+    - tblfn-remove-nth-body-row
+    - tblfn-remove-nth-row
+    - tblfn-remove-body-rows-between
+    - tblfn-remove-if
+  - Row Iteration
+    - tblfn-map-row
+  - Row Index Access
+    - tblfn-normalize-table-row-index
+    - tblfn-nth-body-row
+    - tblfn-nth-row
+    - tblfn-set-nth-body-row
+    - tblfn-set-nth-row
+    - tblfn-slice-body
+  - Row Counting
+    - tblfn-count-if
+  - Row Extraction
+    - tblfn-sample
+    - tblfn-filter
+    - tblfn-make-row-predicate-from-condition-spec
+    - tblfn-make-row-predicate-from-condition-sexp
+    - tblfn-unique
+  - Row Ordering
+    - tblfn-sort
+    - tblfn-reverse
+    - tblfn-shuffle
+- Table Transformation
+  - tblfn-update
+  - tblfn-make-row-transformer
+- Multi-Table Operations
+  - Row Concatenation
+    - tblfn-append-body-rows
+    - tblfn-append-rows
+    - tblfn-insert-body-rows-at
+    - tblfn-insert-rows-at
+  - Table Joins
+    - tblfn-merge
+    - tblfn-join
+    - tblfn-cross-join
+  - Set Operations
+    - tblfn-reduce
+    - tblfn-union
+    - tblfn-intersection
+    - tblfn-difference
+- Table Reshaping
+  - tblfn-transpose
+  - tblfn-transpose--generate-column-names
+- Table Aggregation
+  - tblfn-aggregate
+  - tblfn-count-by
+- Table Calculation
+  - tblfn-add-percentage-column
+  - tblfn-add-percentage-column--calc
+  - tblfn-add-footer-sum
+  - tblfn-add-footer-vcalc
+- Org-mode Support
+  - tblfn-use-hlines-p
+  - tblfn-for-org-p
+  - tblfn-org-invalid-row-p
+  - tblfn-skip-org-invalid-rows
+- Calc Integration
+  - tblfn-calc-vector-fun
+- String/Number Conversion
+  - tblfn-string-to-number
+  - tblfn-to-number
+- CSV I/O
+  - tblfn-read-csv-file
+  - tblfn-write-csv-file
+- S-expression Utilities
+  - tblfn--expand-symbol-references-in-sexp
+- List Utilities
+  - tblfn-take-padded
+  - tblfn-take-until-cons-cell
+  - tblfn-count-between
+  - tblfn-find-element-and-after
+  - tblfn-find-nth-elmenet-and-after
+  - tblfn-slice
+  - tblfn-head
+  - tblfn-tail
+  - tblfn-normalize-index
+  - tblfn-normalize-index-clamp
+- For Maintenance
+  - tblfn--generate-function-list-for-readme
+
+* 蘊蓄
+** 連続してテーブルの加工を行う方法
+
+テーブルを加工した結果にさらに別の加工を施しそれをまたさらに加工、といった具合に加工を繰り返していくことは本ライブラリの使用においては非常に良くあることです。そういった加工の連鎖を行うにはいくつかの書き方があります。
+
+特殊な構文が無く最も多くの人に理解しやすいのは次の書き方でしょう。
+
+#+begin_src elisp :exports code
+(tblfn-add-footer-sum
+ (tblfn-add-percentage-column
+  (tblfn-sort
+   (tblfn-aggregate inventory "Category" "Total")
+   "Total" t)
+  "Total" "Percentage")
+ "Total" "Percentage")
+#+end_src
+
+ただ、この書き方は関数名と引数の対応関係が分かりづらいのが欠点です。
+
+次の書き方は比較的簡単な書き方でしょう。
+
+#+begin_src elisp :exports code
+(let* ((table (tblfn-aggregate inventory "Category" "Total"))
+       (table (tblfn-sort table "Total" t))
+       (table (tblfn-add-percentage-column table "Total" "Percentage"))
+       (table (tblfn-add-footer-sum table "Total" "Percentage")))
+  table)
+#+end_src
+
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Local-Variables.html#index-let_002a][let*]]という構文は昔からあるポピュラーな構文です。同じ変数名を繰り返し使うのは若干気持ち悪さを感じますが。
+
+~thread-first~ はEmacs 25で導入されたマクロです。これを使うと次のように書けます。
+
+#+begin_src elisp :exports code
+(thread-first
+  (tblfn-aggregate inventory "Category" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage"))
+#+end_src
+
+最初の一行以外第一引数であるtableが消えていることがお分かりでしょうか。 ~thread-first~ は前の式の結果を後続の第一引数にします。なので結果はこれまでに書いた書き方と同じになります。
+
+冗長さがほぼ無くなり綺麗になりましたが次のような欠点もあります:
+
+- ~thread-first~ マクロを知らないと戸惑う。
+- eldocでの引数のハイライト位置が一つズレる。(Emacs 30時点)
+- 接頭辞の ~tblfn-~ の部分は未だ冗長。
+
+eldocで引数のハイライト位置がずれるのは残念ですが、まだ我慢できる範囲ではあります。表示されないよりはマシです。
+
+より冗長性を無くすために次のような書き方(マクロ)も用意しました。
+
+#+begin_src elisp :exports code
+(tblfn-process inventory
+  (aggregate "Category" "Total")
+  (sort "Total" t)
+  (add-percentage-column "Total" "Percentage")
+  (add-footer-sum "Total" "Percentage"))
+#+end_src
+
+これによって接頭辞の ~tblfn-~ を頻繁に繰り返す必要が無くなりました。
+
+しかし一方で次のような欠点が生じます。
+
+- ~tblfn-process~ マクロを知らないと戸惑う。
+- 各行が頭に ~tblfn-~ が付いている関数と対応していることが事前に知らないと分からない。
+- eldocが表示されない。
+- ~describe-function~ でも検索しづらくなる。
+
+私はこのような集計作業を頻繁に行うわけではないので関数の仕様を覚えておくことはできません。eldocが表示されないのはかなり大きなデメリットです。
+
+それぞれの方法に一長一短があるので、その時々で好みの方法を選んでください。
+
+私は主に ~thread-first~ を使用しています。途中の計算結果を後から参照したい場合は ~let*~ が良いでしょう。
+
+** hline
+
+本ライブラリでは ~hline~ という名前のシンボルを特別に扱います。これはorg-modeにおいて複数の行をグループ分けするために使われるシンボルです。ソースコードブロックのヘッダー引数として ~:hlines yes~ を指定すると利用できます。
+
+本ライブラリでは入力テーブルの中に ~hline~ シンボルが一つでもあれば、基本的には ~hline~ を使用するモードになります。無い場合でも、 ~tblfn-use-hlines~ 変数が ~t~ に設定されているか、あるいは ~auto~ に設定されていて現在のバッファがorg-modeの場合は、 ~hline~ を使用します。
+
+** ヘッダー、ボディ、フッター
+
+本ライブラリの多くの関数は、一つのテーブルをヘッダー、ボディ、フッターの三つのセクションに分けて処理します(全てを一緒くたにして処理する関数もあります)。
+
+ヘッダーは列名を保持する行です。
+
+フッターは合計値などを格納するためにもうけられた付加的な行で、メインの計算処理からは除外されることが多いです。
+
+ヘッダーとフッターの間にある行がボディです。一般に「ボディ」と言った場合は、その中にあるデータ行(後述)のみが処理対象となり非データ行は除外されます。
+
+テーブルに ~hline~ が一つだけある場合、それはヘッダーとボディの区切りと見なされます。テーブルに ~hline~ が二つ以上ある場合、最初の一つがヘッダーとボディの区切りであり、最後の一つがボディとフッターの区切りであると見なされます。
+
+テーブルに ~hline~ が一つも無い場合、先頭の一行がヘッダーであり、残りがボディです。フッターはありません。もしこの解釈に問題がある場合は、 ~tblfn-add-header-row~ や ~tblfn-add-hline~ 、 ~tblfn-add-row~ 、 ~tblfn-insert-hline~ 等を使用して、先に ~hline~ を付加してヘッダーとフッターの位置を明確にしてから関数に引き渡してください。
+
+#+begin_src elisp :exports code
+(tblfn-add-header-row ;; 最初に列名を持つ行を追加する
+ (tblfn-slice loaded-table 0 -1) ;; 最後の行を落とす
+ '("Product" "Quantity" "Price"))
+#+end_src
+
+ボディを計算対象とする多くの関数はフッターを捨ててしまいます。必要であれば、最後にフッターを復元してください。
+
+#+begin_src elisp :exports code
+;; 元のテーブルのフッター部分を結果テーブルの後にくっつける
+(tblfn-append-rows result-table (tblfn-footer-hline-and-after original-table))
+#+end_src
+
+** データ行
+
+本ライブラリでは、通常の計算の対象となる有効な行のことをデータ行と呼んでいます。
+
+データ行では *ない* ものは次のいずれかです。
+
+- ~hline~ シンボルのみの行
+- org-mode用動作時で、先頭の列が ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~ のいずれかの場合
+
+org-mode用動作をするかどうかは変数 ~tblfn-for-org~ によって決まります。 ~t~ の場合、または ~auto~ で現在のバッファがorg-modeの場合はorg-mode用の動作をします。先頭が  ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~ の行はorg-modeにおいてはRecalc Marksと呼ばれる特殊な行([[https://orgmode.org/manual/Advanced-features.html][Advanced features (The Org Manual)]])なので、処理の対象から除外します。
+
+** インデックス番号
+
+シーケンス内の位置を整数で指し示すとき0から始まるインデックス番号を使うことがあります。
+
+特に行の位置を指定する場合、テーブル全体インデックス番号と、ボディ内のみのインデックス番号の二種類が主に使われます。ボディ内のインデックス番号は、その中にある非データ行(~hline~ やorg-mode用の無効な行)を数えないことに注意してください。
+
+負のインデックス番号はシーケンス末尾からの相対位置を表します。シーケンスの要素数を足すことで先頭からのインデックス番号に変換されます。-1は最後の要素を表します。
+
+nilは末尾(最後の要素の次)を表すことが多いですが、引数によっては0を表すこともあります。
+
+有効な範囲外を指定した場合にエラーになるかクランプされるかは関数によって異なります。
+
+** 列の指定方法(COLSPEC)
+
+列の指定は次のいずれかで行います。
+
+- 列名を持つ文字列 (例: "Category", "Total")
+- インデックス番号(整数値。負の時末尾からの相対位置) (例: 1, -2)
+
+** 列数
+
+テーブル全体の列数は最初のデータ行にある列(列名)の数によってのみ決まります。もし足りない場合は先に補ってから計算してください。
+
+** 行とマッチする条件式の書き方
+
+いくつかの関数ではS式で条件を記述できます。式の中では列名を変数名として使うことができます。
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory '(and (equal Category "Vegetable") (>= (tblfn-to-number Price) 100)))
+#+end_src
+
+列名に空白が含まれている場合は ~\~ でエスケープしてください。
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory '(< (tblfn-to-number Max\ Value) 1000)))
+#+end_src
+
+また、 ~row-index~ という変数で行インデックス番号を取得することもできます。
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory '(< row-index 5))) ;; 0～4行目まで
+#+end_src
+
+さらに ~row~ という変数で行全体(フィールドのリスト)を取得することもできます。
+
+#+begin_src elisp :exports code
+(tblfn-filter table '(< (apply #'+ row) 100))) ;; 全列の合計が100未満のもの
+#+end_src
+
+単純に列名と値を指定する方法もあります(引数が多い複雑な関数ではS式による指定しかできない場合もあります)。
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory "Category" "Vegetable")
+#+end_src
+
+** 行または列の更新
+
+~tblfn-update~ 関数を使うと特定の行または特定の列を現在の値を元にして(あるいはそれは無視して)変更できます。
+
+どのように更新するかをS式で指定できますが、ここでも変数で列の値や ~row-index~ 、 ~row~ を取得することができます。
+
+#+begin_src elisp :exports code
+;; ボディの全ての行(t)のTotal列をQuantity列とPrice列の積にする(S式の例)
+(tblfn-update table t "Total" '(* Quantity Price))
+
+;; "Tokyo Foods"を"Machida Foods"へ置換する(文字列の例)
+(tblfn-update suppliers '(equal Supplier "Tokyo Foods") "Supplier" "Machida Foods")
+
+;; 乳製品の価格を2倍にする(関数を指定する例)
+(tblfn-update inventory '(equal Category "Dairy") "Price" (lambda (col) (* 2 (tblfn-to-number col))))
+
+;; 列をローテートする(行全体を更新する関数を指定する例)
+(tblfn-update table t (lambda (row) (append (cdr row) (list (car row)))))
+
+;; 列をローテートする(S式の例)
+(tblfn-update table t '((append (cdr row) (list (car row)))))
+#+end_src
+
+** フィールド値のデータ型
+
+各フィールドの値に明確な制限はありません。典型的なものは文字列(stringp)か数値(numberp、integerp、floatp)です。
+
+org-modeにおいてソースコードブロックからテーブルを参照した場合、数字部分は数値型に変換されているようです。この動作を抑制できるかは知りません。この時点で元の十進数小数との間でわずかな誤差が生じます。
+
+CSVファイルから読み込んだデータは全て文字列のままです。
+
+Lispのコードから文字列も数値も同様に数値として扱いたい場合は ~tblfn-to-number~ 関数が利用できます。
+
+#+begin_src elisp :exports code
+(tblfn-to-number "123,456.78") ; => 123456.78
+(tblfn-to-number 123456.78) ; => 123456.78
+#+end_src
+
+また、 ~tblfn-aggregate~ や ~tblfn-add-percentage-column~ 等がEmacs Calcを利用して計算した結果はデフォルトでは文字列型になります。結果の型を数値型にしたい場合は、 ~tblfn-calc-result-number-type~ 変数を ~number~ にしてください。
+
+#+begin_src elisp :exports code
+(let* ((tblfn-calc-result-number-type 'number)
+       (table (tblfn-aggregate
+               '(("Product" "Category" "Quantity" "Price")
+                 ("Apple" "Fruits" 2 150)
+                 ("Onion" "Vegetables" 3 100)
+                 ("Banana" "Fruits" 1 300)
+                 ("Orange" "Fruits" 10 100)
+                 ("Cabbage" "Vegetables" 1 400)
+                 ("Tomato" "Vegetables" 4 100))
+               "Category" '(* Quantity Price) nil "Total")))
+  ;; 数値型なので + で計算できる。
+  (apply #'+ (tblfn-column-values table "Total"))
+  ;; もちろんこの場合はtblfn-column-sumやtblfn-column-vcalcで十分ですが。
+  ;; (tblfn-column-vcalc table "Total" "vsum")
+)
+#+end_src
+
+(init.el等で)常に ~number~ にするかどうかの判断はお任せします。
+
+* ライセンス
+
+このソフトウェアはGPLv3の元でライセンスされています。このソフトウェアは自由に使用、変更、配布することができます。
+
+これはEmacsという素晴らしいソフトウェアを無料で自由に利用できることに対するささやかな感謝の印です。私はことEmacs関連において、著作権を制限的な方法で行使するつもりはありません。好きなように自由に使用してください。または使用せず、コードを参照したり、アイデアを借用したり、何らかのインスピレーションを受けるだけでもよいでしょう。それによってEmacsがより良いものになる一助になれば幸いです。
+
+このソフトウェアを何らかのパッケージアーカイブに登録したい場合は、フォークしてパッケージアーカイブの要件に合わせて必要な変更を加え、ご自身で登録作業を行ってください。必要なメンテナンスも継続して行ってください。私の許可は必要ありません。
+
+改良版の公開も歓迎します。それが私のものよりもうまく機能する場合は、私もそれを使い始めるかもしれません。私はいつか突然開発できなくなる可能性もありますし、継続的な開発を保証することはできません。このソフトは私が欲しいものを形にしたものですので、ご自身で欲しいものを追加してください。
+
+私は英語が堪能ではないので、英語での継続的なコミュニケーションを期待しないでください。英語の文章は全て機械翻訳を併用して多大な時間をかけて翻訳作業を行っています。

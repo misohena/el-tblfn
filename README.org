@@ -1,0 +1,593 @@
+#+TITLE: tblfn.el - Simple data table functions for Emacs
+
+(Languages: en, [[file:README-ja.org][ja]])
+
+* Overview
+
+This is a simple library for processing data tables represented as lists of lists in Emacs Lisp. I created it to allow occasional aggregation tasks to be written with straightforward syntax and a low learning curve.
+
+While I originally created it for processing org-mode tables from Emacs Lisp source blocks, it can also be used for CSV processing and other purposes.
+
+* Usage Examples
+** org-mode Tables
+*** Aggregation
+
+The following org-mode text is an example of aggregating the total amount by category from a list of products.
+
+#+begin_src org
+,#+NAME: inventory
+| Product    | Category  | Quantity | Price |  Total | Supplier      |
+|------------+-----------+----------+-------+--------+---------------|
+| Apple      | Fruit     |       50 |   150 |   7500 | Tokyo Foods   |
+| Banana     | Fruit     |       80 |    80 |   6400 | Manila Export |
+| Orange     | Fruit     |      100 |   100 |  10000 | US Produce    |
+| Strawberry | Fruit     |       30 |   400 |  12000 | Tokyo Foods   |
+| Cabbage    | Vegetable |       40 |   120 |   4800 | Beijing Trade |
+| Carrot     | Vegetable |       60 |    90 |   5400 | Tokyo Foods   |
+| Tomato     | Vegetable |       45 |   200 |   9000 | Mexico Fresh  |
+| Lettuce    | Vegetable |       35 |   130 |   4550 | US Produce    |
+| Potato     | Vegetable |       70 |    80 |   5600 | Dutch Farms   |
+| Milk       | Dairy     |       25 |   220 |   5500 | Tokyo Foods   |
+| Cheese     | Dairy     |       15 |   450 |   6750 | Paris Dairy   |
+| Yogurt     | Dairy     |       40 |   180 |   7200 | Berlin Dairy  |
+| Chicken    | Meat      |       20 |   350 |   7000 | Brazil Meat   |
+| Pork       | Meat      |       18 |   400 |   7200 | Danish Farms  |
+| Beef       | Meat      |       10 |   800 |   8000 | Aussie Beef   |
+|------------+-----------+----------+-------+--------+---------------|
+|            |           |          |       | 106900 |               |
+,#+TBLFM: @>$5=vsum(@I..@II)
+
+,#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(require 'tblfn)
+(thread-first
+  (tblfn-aggregate inventory "Category" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage"))
+,#+end_src
+
+,#+RESULTS:
+| Category  |  Total | Percentage |
+|-----------+--------+------------|
+| Fruit     |  35900 |      33.58 |
+| Vegetable |  29350 |      27.46 |
+| Meat      |  22200 |      20.77 |
+| Dairy     |  19450 |      18.19 |
+|-----------+--------+------------|
+|           | 106900 |       100. |
+#+end_src
+
+*** Joining
+
+Let's join supplier information to the first table.
+
+#+begin_src org
+...continued from above
+
+,#+NAME: suppliers
+| Supplier      | Country     | Rating |
+|---------------+-------------+--------|
+| Tokyo Foods   | Japan       |      5 |
+| Manila Export | Philippines |      4 |
+| US Produce    | USA         |      4 |
+| Beijing Trade | China       |      3 |
+| Mexico Fresh  | Mexico      |      5 |
+| Dutch Farms   | Netherlands |      4 |
+| Paris Dairy   | France      |      5 |
+| Berlin Dairy  | Germany     |      4 |
+| Brazil Meat   | Brazil      |      4 |
+| Danish Farms  | Denmark     |      5 |
+| Aussie Beef   | Australia   |      4 |
+
+,#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier"))
+,#+end_src
+
+,#+RESULTS:
+| Product    | Category  | Quantity | Price | Total | Supplier      | Country     | Rating |
+|------------+-----------+----------+-------+-------+---------------+-------------+--------|
+| Apple      | Fruit     |       50 |   150 |  7500 | Tokyo Foods   | Japan       |      5 |
+| Banana     | Fruit     |       80 |    80 |  6400 | Manila Export | Philippines |      4 |
+| Orange     | Fruit     |      100 |   100 | 10000 | US Produce    | USA         |      4 |
+| Strawberry | Fruit     |       30 |   400 | 12000 | Tokyo Foods   | Japan       |      5 |
+| Cabbage    | Vegetable |       40 |   120 |  4800 | Beijing Trade | China       |      3 |
+| Carrot     | Vegetable |       60 |    90 |  5400 | Tokyo Foods   | Japan       |      5 |
+| Tomato     | Vegetable |       45 |   200 |  9000 | Mexico Fresh  | Mexico      |      5 |
+| Lettuce    | Vegetable |       35 |   130 |  4550 | US Produce    | USA         |      4 |
+| Potato     | Vegetable |       70 |    80 |  5600 | Dutch Farms   | Netherlands |      4 |
+| Milk       | Dairy     |       25 |   220 |  5500 | Tokyo Foods   | Japan       |      5 |
+| Cheese     | Dairy     |       15 |   450 |  6750 | Paris Dairy   | France      |      5 |
+| Yogurt     | Dairy     |       40 |   180 |  7200 | Berlin Dairy  | Germany     |      4 |
+| Chicken    | Meat      |       20 |   350 |  7000 | Brazil Meat   | Brazil      |      4 |
+| Pork       | Meat      |       18 |   400 |  7200 | Danish Farms  | Denmark     |      5 |
+| Beef       | Meat      |       10 |   800 |  8000 | Aussie Beef   | Australia   |      4 |
+#+end_src
+
+*** Percentage
+
+From there, we can calculate the total amount and composition ratio by supplying country.
+
+#+begin_src org
+,#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier")
+  (tblfn-aggregate "Country" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total"))
+,#+end_src
+
+,#+RESULTS:
+| Country     |  Total | Percentage |
+|-------------+--------+------------|
+| Japan       |  30400 |      28.44 |
+| USA         |  14550 |      13.61 |
+| Mexico      |   9000 |       8.42 |
+| Australia   |   8000 |       7.48 |
+| Germany     |   7200 |       6.74 |
+| Denmark     |   7200 |       6.74 |
+| Brazil      |   7000 |       6.55 |
+| France      |   6750 |       6.31 |
+| Philippines |   6400 |       5.99 |
+| Netherlands |   5600 |       5.24 |
+| China       |   4800 |       4.49 |
+|-------------+--------+------------|
+|             | 106900 |            |
+#+end_src
+
+*** Counting
+
+If you want to know the number of products supplied by each supplier, do the following.
+
+#+begin_src org
+,#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier")
+  (tblfn-count-by "Supplier" "Count")
+  (tblfn-sort "Count" t)
+  (tblfn-add-footer-sum "Count"))
+,#+end_src
+
+,#+RESULTS:
+| Supplier      | Count |
+|---------------+-------|
+| Tokyo Foods   |     4 |
+| US Produce    |     2 |
+| Manila Export |     1 |
+| Beijing Trade |     1 |
+| Mexico Fresh  |     1 |
+| Dutch Farms   |     1 |
+| Paris Dairy   |     1 |
+| Berlin Dairy  |     1 |
+| Brazil Meat   |     1 |
+| Danish Farms  |     1 |
+| Aussie Beef   |     1 |
+|---------------+-------|
+|               |    15 |
+#+end_src
+
+** CSV Files
+
+This library can be used not only for org-mode but also for processing CSV files.
+
+#+begin_src elisp
+(thread-first
+  (tblfn-read-csv-file "inventory.csv")
+  ;; If the CSV has no header row, add one like this:
+  ;; (tblfn-add-header-row '("Product" "Category" "Quantity" "Price" "Total" "Supplier"))
+  ;; (tblfn-insert-hline -1) ;; If there's a footer, insert a separator.
+
+  ;; Join with supplier information.
+  (tblfn-join (tblfn-read-csv-file "suppliers.csv") "Supplier")
+  (tblfn-write-csv-file "inventory-with-suppliers.csv")
+
+  ;; Continue to calculate the amount and ratio for each supplier.
+  (tblfn-aggregate "Supplier" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage")
+  (tblfn-write-csv-file "supplier-percentages.csv"))
+#+end_src
+
+Since CSV files vary in structure, ~tblfn-slice~ or ~tblfn-transpose~ may be useful for preprocessing.
+
+** Other Examples
+Additional examples can be found in [[file:example/example.org][example/example.org]].
+
+* Function List
+
+- Pipeline Macro
+  - tblfn-process
+- Horizontal Lines (hlines)
+  - tblfn-hline-p
+  - tblfn-hline-count
+  - tblfn-nth-hline-and-after
+  - tblfn-last-hline-and-after
+  - tblfn-between-hlines
+  - tblfn-before-first-hline
+  - tblfn-insert-hline
+  - tblfn-add-hline
+- Row Types
+  - tblfn-non-data-row-p
+  - tblfn-data-row-p
+- Columns
+  - Column Metadata
+    - tblfn-column-count
+    - tblfn-column-names
+    - tblfn-column-name
+    - tblfn-column-index
+    - tblfn-set-all-column-names
+    - tblfn-rename-column
+    - tblfn--expand-column-references-in-sexp
+  - Column Structure
+    - tblfn-insert-column
+    - tblfn-add-column
+    - tblfn-append-columns
+    - tblfn-remove-columns
+  - Column Operations
+    - tblfn-column-fields
+    - tblfn-column-sum
+    - tblfn-column-vcalc
+    - tblfn-select-columns
+- Fields (Cell Access)
+  - tblfn-body-field-at
+  - tblfn-field-at
+  - tblfn-set-body-field-at
+  - tblfn-set-field-at
+- Sections
+  - Header
+    - tblfn-after-header
+    - tblfn-insert-header-hline
+    - tblfn-add-header-row
+  - Footer
+    - tblfn-footer-hline-and-after
+    - tblfn-remove-footer
+    - tblfn-remove-last-row
+  - Body
+    - tblfn-mapc-body-row
+    - tblfn-map-body-row
+    - tblfn-body-row-count
+    - tblfn-body-row-index-to-table-row-index
+    - tblfn-body
+    - tblfn-take-body-rows-and-rest
+    - tblfn-data-rows-before-last-hline
+- Row Operations
+  - Row Insertion
+    - tblfn-add-body-row
+    - tblfn-add-row
+    - tblfn-insert-nth-body-row
+    - tblfn-insert-nth-row
+  - Row Removal
+    - tblfn-remove-nth-body-row
+    - tblfn-remove-nth-row
+    - tblfn-remove-body-rows-between
+    - tblfn-remove-if
+  - Row Iteration
+    - tblfn-map-row
+  - Row Index Access
+    - tblfn-normalize-table-row-index
+    - tblfn-nth-body-row
+    - tblfn-nth-row
+    - tblfn-set-nth-body-row
+    - tblfn-set-nth-row
+    - tblfn-slice-body
+  - Row Counting
+    - tblfn-count-if
+  - Row Extraction
+    - tblfn-sample
+    - tblfn-filter
+    - tblfn-make-row-predicate-from-condition-spec
+    - tblfn-make-row-predicate-from-condition-sexp
+    - tblfn-unique
+  - Row Ordering
+    - tblfn-sort
+    - tblfn-reverse
+    - tblfn-shuffle
+- Table Transformation
+  - tblfn-update
+  - tblfn-make-row-transformer
+- Multi-Table Operations
+  - Row Concatenation
+    - tblfn-append-body-rows
+    - tblfn-append-rows
+    - tblfn-insert-body-rows-at
+    - tblfn-insert-rows-at
+  - Table Joins
+    - tblfn-merge
+    - tblfn-join
+    - tblfn-cross-join
+  - Set Operations
+    - tblfn-reduce
+    - tblfn-union
+    - tblfn-intersection
+    - tblfn-difference
+- Table Reshaping
+  - tblfn-transpose
+  - tblfn-transpose--generate-column-names
+- Table Aggregation
+  - tblfn-aggregate
+  - tblfn-count-by
+- Table Calculation
+  - tblfn-add-percentage-column
+  - tblfn-add-percentage-column--calc
+  - tblfn-add-footer-sum
+  - tblfn-add-footer-vcalc
+- Org-mode Support
+  - tblfn-use-hlines-p
+  - tblfn-for-org-p
+  - tblfn-org-invalid-row-p
+  - tblfn-skip-org-invalid-rows
+- Calc Integration
+  - tblfn-calc-vector-fun
+- String/Number Conversion
+  - tblfn-string-to-number
+  - tblfn-to-number
+- CSV I/O
+  - tblfn-read-csv-file
+  - tblfn-write-csv-file
+- S-expression Utilities
+  - tblfn--expand-symbol-references-in-sexp
+- List Utilities
+  - tblfn-take-padded
+  - tblfn-take-until-cons-cell
+  - tblfn-count-between
+  - tblfn-find-element-and-after
+  - tblfn-find-nth-elmenet-and-after
+  - tblfn-slice
+  - tblfn-head
+  - tblfn-tail
+  - tblfn-normalize-index
+  - tblfn-normalize-index-clamp
+- For Maintenance
+  - tblfn--generate-function-list-for-readme
+
+* Technical Notes
+** Methods for Chaining Table Operations
+
+When using this library, it is very common to repeatedly apply transformations: processing a table, then applying another transformation to the result, and then yet another transformation to that. There are several ways to write such chains of operations.
+
+The most understandable approach for most people, without any special syntax, is the following:
+
+#+begin_src elisp :exports code
+(tblfn-add-footer-sum
+ (tblfn-add-percentage-column
+  (tblfn-sort
+   (tblfn-aggregate inventory "Category" "Total")
+   "Total" t)
+  "Total" "Percentage")
+ "Total" "Percentage")
+#+end_src
+
+However, the downside of this approach is that it's difficult to see the correspondence between function names and their arguments.
+
+The following approach is relatively straightforward:
+
+#+begin_src elisp :exports code
+(let* ((table (tblfn-aggregate inventory "Category" "Total"))
+       (table (tblfn-sort table "Total" t))
+       (table (tblfn-add-percentage-column table "Total" "Percentage"))
+       (table (tblfn-add-footer-sum table "Total" "Percentage")))
+  table)
+#+end_src
+
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/Local-Variables.html#index-let_002a][let*]] is a popular construct that has been around for a long time. Reusing the same variable name repeatedly feels slightly awkward, though.
+
+~thread-first~ is a macro introduced in Emacs 25. Using it, you can write:
+
+#+begin_src elisp :exports code
+(thread-first
+  (tblfn-aggregate inventory "Category" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage"))
+#+end_src
+
+Notice that the first argument (table) is absent in all but the first line. ~thread-first~ passes the result of the previous expression as the first argument to the following expression. So the result is the same as the approaches written earlier.
+
+This eliminates almost all redundancy and looks clean, but it has the following drawbacks:
+
+- If you don't know the ~thread-first~ macro, it can be confusing.
+- The argument highlight position in eldoc is off by one. (As of Emacs 30)
+- The ~tblfn-~ prefix is still redundant.
+
+It's unfortunate that the argument highlight position is off in eldoc, but it's still tolerable. It's better than nothing being displayed.
+
+To further reduce redundancy, I've also provided the following approach (macro):
+
+#+begin_src elisp :exports code
+(tblfn-process inventory
+  (aggregate "Category" "Total")
+  (sort "Total" t)
+  (add-percentage-column "Total" "Percentage")
+  (add-footer-sum "Total" "Percentage"))
+#+end_src
+
+This eliminates the need to repeatedly write the ~tblfn-~ prefix.
+
+However, this introduces the following drawbacks:
+
+- If you don't know the ~tblfn-process~ macro, it can be confusing.
+- You won't know beforehand that each line corresponds to a function prefixed with ~tblfn-~.
+- eldoc is not displayed.
+- It becomes harder to search with ~describe-function~.
+
+I don't perform such aggregation tasks frequently, so I can't remember the function specifications. Not having eldoc displayed is a significant drawback.
+
+Each method has its pros and cons, so choose your preferred method as the situation dictates.
+
+I primarily use ~thread-first~. If you want to reference intermediate results later, ~let*~ is a good choice.
+
+** hline
+
+This library treats the symbol named ~hline~ specially. This is a symbol used in org-mode to group multiple rows. It can be used by specifying ~:hlines yes~ as a header argument for source blocks.
+
+In this library, if there is even one ~hline~ symbol in the input table, it basically operates in hline-enabled mode. Even without one, if the ~tblfn-use-hlines~ variable is set to ~t~, or set to ~auto~ and the current buffer is in org-mode, hlines will be used.
+
+** Header, Body, and Footer
+
+Many functions in this library process a single table by dividing it into three sections: header, body, and footer (though some functions process everything together).
+
+The header is the row that holds column names.
+
+The footer consists of additional rows provided for storing values like totals, and is often excluded from main calculation processing.
+
+The rows between the header and footer are the body. Generally, when we say "body", only the data rows within it (explained later) are processed, and non-data rows are excluded.
+
+If a table has exactly one ~hline~, it is considered the separator between the header and body. If a table has two or more ~hline~s, the first one is the separator between the header and body, and the last one is the separator between the body and footer.
+
+If a table has no ~hline~s, the first row is the header and the rest is the body. There is no footer. If this interpretation is problematic, use ~tblfn-add-header-row~, ~tblfn-add-hline~, ~tblfn-add-row~, ~tblfn-insert-hline~, etc. to first add ~hline~s to clearly indicate the header and footer positions before passing to functions.
+
+#+begin_src elisp :exports code
+(tblfn-add-header-row ;; First add a row with column names
+ (tblfn-slice loaded-table 0 -1) ;; Drop the last row
+ '("Product" "Quantity" "Price"))
+#+end_src
+
+Many functions that operate on the body discard the footer. If necessary, restore the footer at the end.
+
+#+begin_src elisp :exports code
+;; Append the footer portion of the original table to the result table
+(tblfn-append-rows result-table (tblfn-footer-hline-and-after original-table))
+#+end_src
+
+** Data Rows
+
+In this library, valid rows that are targets of normal calculations are called data rows.
+
+The following are *not* data rows:
+
+- Rows consisting only of the ~hline~ symbol
+- When operating in org-mode mode, rows where the first column is one of ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~
+
+Whether to operate in org-mode mode is determined by the variable ~tblfn-for-org~. If set to ~t~, or if set to ~auto~ and the current buffer is in org-mode, it operates in org-mode mode. Rows beginning with ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~ are special rows called Recalc Marks in org-mode ([[https://orgmode.org/manual/Advanced-features.html][Advanced features (The Org Manual)]]), so they are excluded from processing.
+
+** Index Numbers
+
+When indicating a position within a sequence using an integer, zero-based index numbers are used.
+
+Especially when specifying row positions, two types are mainly used: index numbers for the entire table, and index numbers within the body only. Note that index numbers within the body do not count non-data rows (~hline~ or invalid org-mode rows).
+
+Negative index numbers represent relative positions from the end of the sequence. Adding the number of elements in the sequence converts them to index numbers from the beginning. -1 represents the last element.
+
+nil often represents the end (after the last element), but depending on the argument, it may represent 0.
+
+Whether an out-of-range specification results in an error or is clamped depends on the function.
+
+** Column Specification (COLSPEC)
+
+Columns can be specified by either:
+
+- A string containing the column name (e.g., "Category", "Total")
+- An index number (integer; negative values indicate relative position from the end) (e.g., 1, -2)
+
+** Column Count
+
+The total number of columns in a table is determined solely by the number of columns (column names) in the first data row. If columns are missing, add them before performing calculations.
+
+** Writing Condition Expressions to Match Rows
+
+Some functions allow conditions to be described using S-expressions. Within the expression, column names can be used as variable names.
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory '(and (equal Category "Vegetable") (>= (tblfn-to-number Price) 100)))
+#+end_src
+
+If a column name contains spaces, escape them with ~\~.
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory '(< (tblfn-to-number Max\ Value) 1000)))
+#+end_src
+
+You can also get the row index number using the variable ~row-index~.
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory '(< row-index 5))) ;; Rows 0-4
+#+end_src
+
+Furthermore, you can get the entire row (list of fields) using the variable ~row~.
+
+#+begin_src elisp :exports code
+(tblfn-filter table '(< (apply #'+ row) 100))) ;; Rows where the sum of all columns is less than 100
+#+end_src
+
+There is also a simpler method of specifying a column name and value (though some complex functions with many arguments may only support S-expression specification).
+
+#+begin_src elisp :exports code
+(tblfn-filter inventory "Category" "Vegetable")
+#+end_src
+
+** Updating Rows or Columns
+
+Using the ~tblfn-update~ function, you can modify specific rows or columns based on their current values (or ignoring them).
+
+You can specify how to update using S-expressions, where you can also access column values and ~row-index~, ~row~ through variables.
+
+#+begin_src elisp :exports code
+;; Set the Total column of all body rows (t) to the product of Quantity and Price columns (S-expression example)
+(tblfn-update table t "Total" '(* Quantity Price))
+
+;; Replace "Tokyo Foods" with "Machida Foods" (string example)
+(tblfn-update suppliers '(equal Supplier "Tokyo Foods") "Supplier" "Machida Foods")
+
+;; Double the price of dairy products (example specifying a function)
+(tblfn-update inventory '(equal Category "Dairy") "Price" (lambda (col) (* 2 (tblfn-to-number col))))
+
+;; Rotate columns (example specifying a function that updates the entire row)
+(tblfn-update table t (lambda (row) (append (cdr row) (list (car row)))))
+
+;; Rotate columns (S-expression example)
+(tblfn-update table t '((append (cdr row) (list (car row)))))
+#+end_src
+
+** Field Value Data Types
+
+There are no strict restrictions on the value of each field. Typical values are strings (stringp) or numbers (numberp, integerp, floatp).
+
+When referencing a table from a source code block in org-mode, numeric parts appear to be converted to numeric types. I don't know if this behavior can be suppressed. At this point, slight errors may occur compared to the original decimal numbers.
+
+Data read from CSV files remains entirely as strings.
+
+If you want to treat both strings and numbers as numbers from Lisp code, you can use the ~tblfn-to-number~ function.
+
+#+begin_src elisp :exports code
+(tblfn-to-number "123,456.78") ; => 123456.78
+(tblfn-to-number 123456.78) ; => 123456.78
+#+end_src
+
+Also, results calculated using Emacs Calc by functions such as ~tblfn-aggregate~ and ~tblfn-add-percentage-column~ are strings by default. If you want the result type to be numeric, set the ~tblfn-calc-result-number-type~ variable to ~number~.
+
+#+begin_src elisp :exports code
+(let* ((tblfn-calc-result-number-type 'number)
+       (table (tblfn-aggregate
+               '(("Product" "Category" "Quantity" "Price")
+                 ("Apple" "Fruits" 2 150)
+                 ("Onion" "Vegetables" 3 100)
+                 ("Banana" "Fruits" 1 300)
+                 ("Orange" "Fruits" 10 100)
+                 ("Cabbage" "Vegetables" 1 400)
+                 ("Tomato" "Vegetables" 4 100))
+               "Category" '(* Quantity Price) nil "Total")))
+  ;; Since it's numeric type, we can calculate with +.
+  (apply #'+ (tblfn-column-values table "Total"))
+  ;; Of course, in this case tblfn-column-sum or tblfn-column-vcalc would suffice.
+  ;; (tblfn-column-vcalc table "Total" "vsum")
+)
+#+end_src
+
+Whether to always set it to ~number~ (e.g., in init.el) is left to your judgment.
+
+* License
+
+This software is licensed under the GPLv3. You are free to use, modify, and distribute this software.
+
+This is a small token of gratitude for being able to freely use the wonderful software called Emacs. I have no intention of exercising copyright in a restrictive manner when it comes to Emacs-related work. Please use it freely as you like. Or don't use itÅ\just reference the code, borrow ideas, or draw some inspiration. I would be happy if it helps make Emacs better in any way.
+
+If you want to register this software in some package archive, please fork it, make the necessary changes to meet the package archive requirements, and perform the registration yourself. Please continue the necessary maintenance as well. You don't need my permission.
+
+Publishing improved versions is also welcome. If yours works better than mine, I might start using it too. I may suddenly become unable to develop someday, and I cannot guarantee continued development. This software embodies what I wanted, so please add what you want yourself.
+
+I am not fluent in English, so please do not expect continuous communication in English. All English text has been translated with great effort using machine translation assistance.

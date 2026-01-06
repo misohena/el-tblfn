@@ -1,0 +1,414 @@
+#+TITLE: Examples
+
+* Load Library
+#+begin_src elisp
+(require 'tblfn)
+#+end_src
+
+* Aggregate
+
+#+NAME: inventory
+| Product    | Category  | Quantity | Price |  Total | Supplier      |
+|------------+-----------+----------+-------+--------+---------------|
+| Apple      | Fruit     |       50 |   150 |   7500 | Tokyo Foods   |
+| Banana     | Fruit     |       80 |    80 |   6400 | Manila Export |
+| Orange     | Fruit     |      100 |   100 |  10000 | US Produce    |
+| Strawberry | Fruit     |       30 |   400 |  12000 | Tokyo Foods   |
+| Cabbage    | Vegetable |       40 |   120 |   4800 | Beijing Trade |
+| Carrot     | Vegetable |       60 |    90 |   5400 | Tokyo Foods   |
+| Tomato     | Vegetable |       45 |   200 |   9000 | Mexico Fresh  |
+| Lettuce    | Vegetable |       35 |   130 |   4550 | US Produce    |
+| Potato     | Vegetable |       70 |    80 |   5600 | Dutch Farms   |
+| Milk       | Dairy     |       25 |   220 |   5500 | Tokyo Foods   |
+| Cheese     | Dairy     |       15 |   450 |   6750 | Paris Dairy   |
+| Yogurt     | Dairy     |       40 |   180 |   7200 | Berlin Dairy  |
+| Chicken    | Meat      |       20 |   350 |   7000 | Brazil Meat   |
+| Pork       | Meat      |       18 |   400 |   7200 | Danish Farms  |
+| Beef       | Meat      |       10 |   800 |   8000 | Aussie Beef   |
+|------------+-----------+----------+-------+--------+---------------|
+|            |           |          |       | 106900 |               |
+#+TBLFM: @>$5=vsum(@I..@II)
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(thread-first
+  (tblfn-aggregate inventory "Category" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage"))
+#+end_src
+
+#+RESULTS:
+| Category  |  Total | Percentage |
+|-----------+--------+------------|
+| Fruit     |  35900 |      33.58 |
+| Vegetable |  29350 |      27.46 |
+| Meat      |  22200 |      20.77 |
+| Dairy     |  19450 |      18.19 |
+|-----------+--------+------------|
+|           | 106900 |       100. |
+
+* Join
+
+#+NAME: suppliers
+| Supplier      | Country     | Rating |
+|---------------+-------------+--------|
+| Tokyo Foods   | Japan       |      5 |
+| Manila Export | Philippines |      4 |
+| US Produce    | USA         |      4 |
+| Beijing Trade | China       |      3 |
+| Mexico Fresh  | Mexico      |      5 |
+| Dutch Farms   | Netherlands |      4 |
+| Paris Dairy   | France      |      5 |
+| Berlin Dairy  | Germany     |      4 |
+| Brazil Meat   | Brazil      |      4 |
+| Danish Farms  | Denmark     |      5 |
+| Aussie Beef   | Australia   |      4 |
+
+#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier"))
+#+end_src
+
+#+RESULTS:
+| Product    | Category  | Quantity | Price | Total | Supplier      | Country     | Rating |
+|------------+-----------+----------+-------+-------+---------------+-------------+--------|
+| Apple      | Fruit     |       50 |   150 |  7500 | Tokyo Foods   | Japan       |      5 |
+| Banana     | Fruit     |       80 |    80 |  6400 | Manila Export | Philippines |      4 |
+| Orange     | Fruit     |      100 |   100 | 10000 | US Produce    | USA         |      4 |
+| Strawberry | Fruit     |       30 |   400 | 12000 | Tokyo Foods   | Japan       |      5 |
+| Cabbage    | Vegetable |       40 |   120 |  4800 | Beijing Trade | China       |      3 |
+| Carrot     | Vegetable |       60 |    90 |  5400 | Tokyo Foods   | Japan       |      5 |
+| Tomato     | Vegetable |       45 |   200 |  9000 | Mexico Fresh  | Mexico      |      5 |
+| Lettuce    | Vegetable |       35 |   130 |  4550 | US Produce    | USA         |      4 |
+| Potato     | Vegetable |       70 |    80 |  5600 | Dutch Farms   | Netherlands |      4 |
+| Milk       | Dairy     |       25 |   220 |  5500 | Tokyo Foods   | Japan       |      5 |
+| Cheese     | Dairy     |       15 |   450 |  6750 | Paris Dairy   | France      |      5 |
+| Yogurt     | Dairy     |       40 |   180 |  7200 | Berlin Dairy  | Germany     |      4 |
+| Chicken    | Meat      |       20 |   350 |  7000 | Brazil Meat   | Brazil      |      4 |
+| Pork       | Meat      |       18 |   400 |  7200 | Danish Farms  | Denmark     |      5 |
+| Beef       | Meat      |       10 |   800 |  8000 | Aussie Beef   | Australia   |      4 |
+
+* Percentage
+
+#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier")
+  (tblfn-aggregate "Country" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total"))
+#+end_src
+
+#+RESULTS:
+| Country     |  Total | Percentage |
+|-------------+--------+------------|
+| Japan       |  30400 |      28.44 |
+| USA         |  14550 |      13.61 |
+| Mexico      |   9000 |       8.42 |
+| Australia   |   8000 |       7.48 |
+| Germany     |   7200 |       6.74 |
+| Denmark     |   7200 |       6.74 |
+| Brazil      |   7000 |       6.55 |
+| France      |   6750 |       6.31 |
+| Philippines |   6400 |       5.99 |
+| Netherlands |   5600 |       5.24 |
+| China       |   4800 |       4.49 |
+|-------------+--------+------------|
+|             | 106900 |            |
+
+*** Count
+
+#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier")
+  (tblfn-aggregate "Country" 0 "vcount" "Count"))
+#+end_src
+
+#+RESULTS:
+| Country     | Count |
+|-------------+-------|
+| Japan       |     4 |
+| Philippines |     1 |
+| USA         |     2 |
+| China       |     1 |
+| Mexico      |     1 |
+| Netherlands |     1 |
+| France      |     1 |
+| Germany     |     1 |
+| Brazil      |     1 |
+| Denmark     |     1 |
+| Australia   |     1 |
+
+
+#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-join suppliers "Supplier")
+  (tblfn-count-by "Supplier" "Count")
+  (tblfn-sort "Count" t)
+  (tblfn-add-footer-sum "Count"))
+#+end_src
+
+#+RESULTS:
+| Supplier      | Count |
+|---------------+-------|
+| Tokyo Foods   |     4 |
+| US Produce    |     2 |
+| Manila Export |     1 |
+| Beijing Trade |     1 |
+| Mexico Fresh  |     1 |
+| Dutch Farms   |     1 |
+| Paris Dairy   |     1 |
+| Berlin Dairy  |     1 |
+| Brazil Meat   |     1 |
+| Danish Farms  |     1 |
+| Aussie Beef   |     1 |
+|---------------+-------|
+|               |    15 |
+
+* Append Columns
+
+#+begin_src elisp :var inventory=inventory :var suppliers=suppliers :colnames no :hlines yes
+(tblfn-append-columns
+ '(("A" "B") hline (0 1) (10 11 12 13) (20 21) hline (-1 -2))
+ '(("C" "D" "E") (2 3) (12 13 14) nil) '(("F" "G" "H") nil (15 16 17) (25) (35 36 37)))
+#+end_src
+
+#+RESULTS:
+|  A |  B |  C |  D |  E |  F |  G |  H |
+|----+----+----+----+----+----+----+----|
+|  0 |  1 |  2 |  3 |    |    |    |    |
+| 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 |
+| 20 | 21 |    |    |    | 25 |    |    |
+|    |    |    |    |    | 35 | 36 | 37 |
+
+* Original Threading Macro
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(tblfn-process inventory
+  (aggregate "Category" "Total")
+  (sort "Total" t)
+  (add-percentage-column "Total" "Percentage")
+  (add-footer-sum "Total" "Percentage"))
+#+end_src
+
+#+RESULTS:
+| Category  |  Total | Percentage |
+|-----------+--------+------------|
+| Fruit     |  35900 |      33.58 |
+| Vegetable |  29350 |      27.46 |
+| Meat      |  22200 |      20.77 |
+| Dairy     |  19450 |      18.19 |
+|-----------+--------+------------|
+|           | 106900 |       100. |
+
+* Filter
+
+Vegetables priced at 100 or more:
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(tblfn-filter inventory '(and (equal Category "Vegetable") (>= (tblfn-to-number Price) 100)))
+#+end_src
+
+#+RESULTS:
+| Product | Category  | Quantity | Price | Total | Supplier      |
+|---------+-----------+----------+-------+-------+---------------|
+| Cabbage | Vegetable |       40 |   120 |  4800 | Beijing Trade |
+| Tomato  | Vegetable |       45 |   200 |  9000 | Mexico Fresh  |
+| Lettuce | Vegetable |       35 |   130 |  4550 | US Produce    |
+
+First 5-rows:
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(tblfn-filter inventory '(< row-index 5)))
+#+end_src
+
+#+RESULTS:
+| Product    | Category  | Quantity | Price | Total | Supplier      |
+|------------+-----------+----------+-------+-------+---------------|
+| Apple      | Fruit     |       50 |   150 |  7500 | Tokyo Foods   |
+| Banana     | Fruit     |       80 |    80 |  6400 | Manila Export |
+| Orange     | Fruit     |      100 |   100 | 10000 | US Produce    |
+| Strawberry | Fruit     |       30 |   400 | 12000 | Tokyo Foods   |
+| Cabbage    | Vegetable |       40 |   120 |  4800 | Beijing Trade |
+
+Vegetables only:
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(tblfn-filter inventory "Category" "Vegetable")
+#+end_src
+
+#+RESULTS:
+| Product | Category  | Quantity | Price | Total | Supplier      |
+|---------+-----------+----------+-------+-------+---------------|
+| Cabbage | Vegetable |       40 |   120 |  4800 | Beijing Trade |
+| Carrot  | Vegetable |       60 |    90 |  5400 | Tokyo Foods   |
+| Tomato  | Vegetable |       45 |   200 |  9000 | Mexico Fresh  |
+| Lettuce | Vegetable |       35 |   130 |  4550 | US Produce    |
+| Potato  | Vegetable |       70 |    80 |  5600 | Dutch Farms   |
+
+#+NAME: numbers
+|  A |  B |  C |  D |
+|----+----+----+----|
+|  1 | 20 | 50 |  2 |
+| 20 | 10 | 30 | 40 |
+| 80 | 10 | 30 | 40 |
+|  8 |  5 | 10 |  2 |
+
+Filter using an entire row:
+
+#+begin_src elisp :var numbers=numbers :colnames no :hlines yes
+(tblfn-filter numbers '(< (apply #'+ row) 100)))
+#+end_src
+
+#+RESULTS:
+| A |  B |  C | D |
+|---+----+----+---|
+| 1 | 20 | 50 | 2 |
+| 8 |  5 | 10 | 2 |
+
+* Update
+
+Replace "Tokyo Foods" with "Machida Foods":
+
+#+begin_src elisp :var suppliers=suppliers :colnames no :hlines yes
+(tblfn-update suppliers '(equal Supplier "Tokyo Foods") "Supplier" "Machida Foods")
+#+end_src
+
+#+RESULTS:
+| Supplier      | Country     | Rating |
+|---------------+-------------+--------|
+| Machida Foods | Japan       |      5 |
+| Manila Export | Philippines |      4 |
+| US Produce    | USA         |      4 |
+| Beijing Trade | China       |      3 |
+| Mexico Fresh  | Mexico      |      5 |
+| Dutch Farms   | Netherlands |      4 |
+| Paris Dairy   | France      |      5 |
+| Berlin Dairy  | Germany     |      4 |
+| Brazil Meat   | Brazil      |      4 |
+| Danish Farms  | Denmark     |      5 |
+| Aussie Beef   | Australia   |      4 |
+
+Add a new column and put (* Quantity Price) in it:
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(thread-first
+  inventory
+  (tblfn-add-column "Total2" "")
+  (tblfn-update t "Total2" '(* Quantity Price)))
+#+end_src
+
+#+RESULTS:
+| Product    | Category  | Quantity | Price | Total | Supplier      | Total2 |
+|------------+-----------+----------+-------+-------+---------------+--------|
+| Apple      | Fruit     |       50 |   150 |  7500 | Tokyo Foods   |   7500 |
+| Banana     | Fruit     |       80 |    80 |  6400 | Manila Export |   6400 |
+| Orange     | Fruit     |      100 |   100 | 10000 | US Produce    |  10000 |
+| Strawberry | Fruit     |       30 |   400 | 12000 | Tokyo Foods   |  12000 |
+| Cabbage    | Vegetable |       40 |   120 |  4800 | Beijing Trade |   4800 |
+| Carrot     | Vegetable |       60 |    90 |  5400 | Tokyo Foods   |   5400 |
+| Tomato     | Vegetable |       45 |   200 |  9000 | Mexico Fresh  |   9000 |
+| Lettuce    | Vegetable |       35 |   130 |  4550 | US Produce    |   4550 |
+| Potato     | Vegetable |       70 |    80 |  5600 | Dutch Farms   |   5600 |
+| Milk       | Dairy     |       25 |   220 |  5500 | Tokyo Foods   |   5500 |
+| Cheese     | Dairy     |       15 |   450 |  6750 | Paris Dairy   |   6750 |
+| Yogurt     | Dairy     |       40 |   180 |  7200 | Berlin Dairy  |   7200 |
+| Chicken    | Meat      |       20 |   350 |  7000 | Brazil Meat   |   7000 |
+| Pork       | Meat      |       18 |   400 |  7200 | Danish Farms  |   7200 |
+| Beef       | Meat      |       10 |   800 |  8000 | Aussie Beef   |   8000 |
+
+Double the price of dairy products:
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(tblfn-update inventory '(equal Category "Dairy") "Price" '(* 2 (tblfn-to-number Price)))
+#+end_src
+
+#+RESULTS:
+| Product    | Category  | Quantity | Price | Total | Supplier      |
+|------------+-----------+----------+-------+-------+---------------|
+| Apple      | Fruit     |       50 |   150 |  7500 | Tokyo Foods   |
+| Banana     | Fruit     |       80 |    80 |  6400 | Manila Export |
+| Orange     | Fruit     |      100 |   100 | 10000 | US Produce    |
+| Strawberry | Fruit     |       30 |   400 | 12000 | Tokyo Foods   |
+| Cabbage    | Vegetable |       40 |   120 |  4800 | Beijing Trade |
+| Carrot     | Vegetable |       60 |    90 |  5400 | Tokyo Foods   |
+| Tomato     | Vegetable |       45 |   200 |  9000 | Mexico Fresh  |
+| Lettuce    | Vegetable |       35 |   130 |  4550 | US Produce    |
+| Potato     | Vegetable |       70 |    80 |  5600 | Dutch Farms   |
+| Milk       | Dairy     |       25 |   440 |  5500 | Tokyo Foods   |
+| Cheese     | Dairy     |       15 |   900 |  6750 | Paris Dairy   |
+| Yogurt     | Dairy     |       40 |   360 |  7200 | Berlin Dairy  |
+| Chicken    | Meat      |       20 |   350 |  7000 | Brazil Meat   |
+| Pork       | Meat      |       18 |   400 |  7200 | Danish Farms  |
+| Beef       | Meat      |       10 |   800 |  8000 | Aussie Beef   |
+
+Rotate left:
+
+#+begin_src elisp :var inventory=inventory :colnames no :hlines yes
+(tblfn-update inventory t (lambda (row) (append (cdr row) (list (car row)))))
+#+end_src
+
+#+RESULTS:
+| Product   | Category | Quantity | Price | Total         | Supplier   |
+|-----------+----------+----------+-------+---------------+------------|
+| Fruit     |       50 |      150 |  7500 | Tokyo Foods   | Apple      |
+| Fruit     |       80 |       80 |  6400 | Manila Export | Banana     |
+| Fruit     |      100 |      100 | 10000 | US Produce    | Orange     |
+| Fruit     |       30 |      400 | 12000 | Tokyo Foods   | Strawberry |
+| Vegetable |       40 |      120 |  4800 | Beijing Trade | Cabbage    |
+| Vegetable |       60 |       90 |  5400 | Tokyo Foods   | Carrot     |
+| Vegetable |       45 |      200 |  9000 | Mexico Fresh  | Tomato     |
+| Vegetable |       35 |      130 |  4550 | US Produce    | Lettuce    |
+| Vegetable |       70 |       80 |  5600 | Dutch Farms   | Potato     |
+| Dairy     |       25 |      220 |  5500 | Tokyo Foods   | Milk       |
+| Dairy     |       15 |      450 |  6750 | Paris Dairy   | Cheese     |
+| Dairy     |       40 |      180 |  7200 | Berlin Dairy  | Yogurt     |
+| Meat      |       20 |      350 |  7000 | Brazil Meat   | Chicken    |
+| Meat      |       18 |      400 |  7200 | Danish Farms  | Pork       |
+| Meat      |       10 |      800 |  8000 | Aussie Beef   | Beef       |
+
+* CSV
+
+#+begin_src elisp
+(thread-first
+  (tblfn-read-csv-file "inventory.csv")
+  ;; If the CSV has no header row, add one like this:
+  ;; (tblfn-add-header-row '("Product" "Category" "Quantity" "Price" "Total" "Supplier"))
+  ;; (tblfn-insert-hline -1) ;; If there's a footer, insert a separator.
+
+  ;; Join with supplier information.
+  (tblfn-join (tblfn-read-csv-file "suppliers.csv") "Supplier")
+  (tblfn-write-csv-file "out-inventory-with-suppliers.csv")
+
+  ;; Continue to calculate the amount and ratio for each supplier.
+  (tblfn-aggregate "Supplier" "Total")
+  (tblfn-sort "Total" t)
+  (tblfn-add-percentage-column "Total" "Percentage")
+  (tblfn-add-footer-sum "Total" "Percentage")
+  (tblfn-write-csv-file "out-supplier-percentages.csv"))
+#+end_src
+
+#+RESULTS:
+| Supplier      |  Total | Percentage |
+|---------------+--------+------------|
+| Tokyo Foods   |  30400 |      28.44 |
+| US Produce    |  14550 |      13.61 |
+| Mexico Fresh  |   9000 |       8.42 |
+| Aussie Beef   |   8000 |       7.48 |
+| Berlin Dairy  |   7200 |       6.74 |
+| Danish Farms  |   7200 |       6.74 |
+| Brazil Meat   |   7000 |       6.55 |
+| Paris Dairy   |   6750 |       6.31 |
+| Manila Export |   6400 |       5.99 |
+| Dutch Farms   |   5600 |       5.24 |
+| Beijing Trade |   4800 |       4.49 |
+|---------------+--------+------------|
+|               | 106900 |     100.01 |
+
+Result CSV:
+- [[file:out-inventory-with-suppliers.csv]]
+- [[file:out-supplier-percentages.csv]]
