@@ -200,8 +200,11 @@ Additional examples can be found in [[file:example/example.org][example/example.
 
 * Function List
 
-- Pipeline Macro
-  - tblfn-process
+- Macros
+  - Pipeline Macro
+    - tblfn-process
+  - Argument List Macro
+    - tblfn--let-args
 - Horizontal Lines (hlines)
   - tblfn-hline-p
   - tblfn-hline-count
@@ -229,7 +232,7 @@ Additional examples can be found in [[file:example/example.org][example/example.
     - tblfn-append-columns
     - tblfn-remove-columns
   - Column Operations
-    - tblfn-column-fields
+    - tblfn-column-values
     - tblfn-column-sum
     - tblfn-column-vcalc
     - tblfn-select-columns
@@ -310,6 +313,8 @@ Additional examples can be found in [[file:example/example.org][example/example.
   - tblfn-transpose--generate-column-names
 - Table Aggregation
   - tblfn-aggregate
+  - tblfn-make-row-to-value-function
+  - tblfn--aggregate-default-column-name
   - tblfn-count-by
 - Table Calculation
   - tblfn-add-percentage-column
@@ -322,8 +327,10 @@ Additional examples can be found in [[file:example/example.org][example/example.
   - tblfn-org-invalid-row-p
   - tblfn-skip-org-invalid-rows
 - Calc Integration
+  - tblfn-calc-result-convert
   - tblfn-calc-vector-fun
 - String/Number Conversion
+  - tblfn-number-string-p
   - tblfn-string-to-number
   - tblfn-to-number
 - CSV I/O
@@ -336,7 +343,7 @@ Additional examples can be found in [[file:example/example.org][example/example.
   - tblfn-take-until-cons-cell
   - tblfn-count-between
   - tblfn-find-element-and-after
-  - tblfn-find-nth-elmenet-and-after
+  - tblfn-find-nth-element-and-after
   - tblfn-slice
   - tblfn-head
   - tblfn-tail

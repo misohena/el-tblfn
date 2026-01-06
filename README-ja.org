@@ -201,8 +201,11 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
 
 * 関数一覧
 
-- Pipeline Macro
-  - tblfn-process
+- Macros
+  - Pipeline Macro
+    - tblfn-process
+  - Argument List Macro
+    - tblfn--let-args
 - Horizontal Lines (hlines)
   - tblfn-hline-p
   - tblfn-hline-count
@@ -230,7 +233,7 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
     - tblfn-append-columns
     - tblfn-remove-columns
   - Column Operations
-    - tblfn-column-fields
+    - tblfn-column-values
     - tblfn-column-sum
     - tblfn-column-vcalc
     - tblfn-select-columns
@@ -311,6 +314,8 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - tblfn-transpose--generate-column-names
 - Table Aggregation
   - tblfn-aggregate
+  - tblfn-make-row-to-value-function
+  - tblfn--aggregate-default-column-name
   - tblfn-count-by
 - Table Calculation
   - tblfn-add-percentage-column
@@ -323,8 +328,10 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - tblfn-org-invalid-row-p
   - tblfn-skip-org-invalid-rows
 - Calc Integration
+  - tblfn-calc-result-convert
   - tblfn-calc-vector-fun
 - String/Number Conversion
+  - tblfn-number-string-p
   - tblfn-string-to-number
   - tblfn-to-number
 - CSV I/O
@@ -337,7 +344,7 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - tblfn-take-until-cons-cell
   - tblfn-count-between
   - tblfn-find-element-and-after
-  - tblfn-find-nth-elmenet-and-after
+  - tblfn-find-nth-element-and-after
   - tblfn-slice
   - tblfn-head
   - tblfn-tail
