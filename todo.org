@@ -1,6 +1,10 @@
 #+TITLE: Simple Data Table Functions for Emacs TODO List
 
 * Inbox
+** TODO tblfn-data-row-pをリストに限定するかどうか
+本来であればリストに限定すべき。
+しかしTEST:の多くの部分で非リストの行を使っている。
+
 ** TODO calc-evalで実行する式に「引数」を渡す方法を調べる
 ** TODO 日付に対応する
 ** TODO tblfn-add-sum-column
