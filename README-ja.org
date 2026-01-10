@@ -334,6 +334,7 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - tblfn-number-string-p
   - tblfn-string-to-number
   - tblfn-to-number
+  - tblfn-to-number-forced
 - CSV I/O
   - tblfn-read-csv-file
   - tblfn-write-csv-file

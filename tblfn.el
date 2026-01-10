@@ -2651,12 +2651,17 @@ Return everything from the first non-ignorable row onwards."
 
 
 (defun tblfn-number-string-p (string)
+  "Return t if STRING can be recognized as a number.
+
+Commas within digits are allowed.
+Leading and trailing whitespace and tabs are ignored.
+Returns nil if STRING contains any other non-numeric characters."
   (not
    (null
     (string-match-p
-     "\\` *[-+]?\
+     "\\`[ \t]*[-+]?\
 \\(?:[0-9,]+\\(?:\\.[0-9]*\\)?\\|\\(?:\\.[0-9]+\\)\\)\
-\\(?:e[-+]?[0-9]+\\)?\\'"
+\\(?:e[-+]?[0-9]+\\)?[ \t]*\\'"
      string))))
 ;; TEST: (tblfn-number-string-p "") => nil
 ;; TEST: (tblfn-number-string-p "1") => t
@@ -2669,17 +2674,57 @@ Return everything from the first non-ignorable row onwards."
 ;; TEST: (tblfn-number-string-p "1.2e-2") => t
 ;; TEST: (tblfn-number-string-p "-12,345.6e-7") => t
 ;; TEST: (tblfn-number-string-p "-12.345.6e-7") => nil
+;; TEST: (tblfn-number-string-p " \t123 \t") => t
+;; TEST: (tblfn-number-string-p " \t\n123 \t\n") => nil
 
 (defun tblfn-string-to-number (string)
-  "Convert STRING to a number.  Commas in STRING are removed beforehand."
+  "Convert STRING to a number.
+
+Commas in STRING are removed beforehand."
   (string-to-number (string-replace "," "" string)))
 
-(defun tblfn-to-number (object)
-  "Convert OBJECT to a number.  Commas in STRING are removed beforehand."
+(defun tblfn-to-number (object &optional noerror default)
+  "Convert OBJECT to a number.
+
+Signals an error if OBJECT cannot be interpreted as a number.
+When NOERROR is non-nil, returns DEFAULT instead of signaling an error.
+
+When OBJECT is a string, `tblfn-number-string-p' is used to determine
+whether it can be interpreted as a number.
+Commas in strings are removed beforehand."
   (cond
    ((numberp object) object)
-   ((stringp object) (tblfn-string-to-number object))
-   (t 0)))
+   ((stringp object)
+    (if (tblfn-number-string-p object)
+        (tblfn-string-to-number object)
+      (unless noerror
+        (error "String cannot be recognized as a number: `%s'" object))
+      default))
+   (t
+    (unless noerror
+      (error "Type cannot be converted to a number: `%s'" object))
+    default)))
+;; TEST: (tblfn-to-number 123) => 123
+;; TEST: (tblfn-to-number "123") => 123
+;; TEST: (tblfn-to-number "123,456.78") => 123456.78
+;; TEST: (tblfn-to-number "123,456.78a") => error
+;; TEST: (tblfn-to-number "123,456.78a") => error
+;; TEST: (tblfn-to-number " \t-12,345.6e-7 \t") => -0.00123456
+;; TEST: (tblfn-to-number 'abc) => error
+;; TEST: (tblfn-to-number "") => error
+;; TEST: (tblfn-to-number "" t) => nil
+;; TEST: (tblfn-to-number "" t 0) => 0
+
+(defun tblfn-to-number-forced (object &optional default)
+  "Convert OBJECT to a number, always returning a numeric value.
+
+Returns DEFAULT if OBJECT cannot be interpreted as a number.
+If DEFAULT is nil, returns 0.
+
+When OBJECT is a string, `tblfn-number-string-p' is used to determine
+whether it can be interpreted as a number.
+Commas in strings are removed beforehand."
+  (tblfn-to-number object t (or default 0)))
 
 
 ;;;; CSV I/O
