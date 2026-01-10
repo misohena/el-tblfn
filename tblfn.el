@@ -1726,6 +1726,33 @@ Examples:
              col-exps)
          row)))))
 
+(defun tblfn-map-fields (table field-function)
+  "Return a table with FIELD-FUNCTION applied to all fields in TABLE.
+
+FIELD-FUNCTION is a function that takes a field value as an argument.
+The returned value becomes the new field value.
+
+The header portion of TABLE is not included in processing.
+The body and footer are included in processing.
+Non-data rows are not included in processing.
+Field values not included in processing are preserved as-is."
+  (tblfn-add-header-row
+   (mapcar (lambda (row)
+             (if (tblfn-data-row-p row)
+                 (mapcar field-function row)
+               row))
+           (tblfn-after-header table))
+   (tblfn-column-names table)
+   table))
+;; TEST: (tblfn-map-fields '(("1" "2") ("1" "2") ("3" "4") ("5" "6") ("A" "B")) #'tblfn-to-number-if-possible) => (("1" "2") (1 2) (3 4) (5 6) ("A" "B"))
+;; TEST: (tblfn-map-fields '(("1" "2") (3 4) hline ("1" "2") ("3" "4") ("5" "6") ("A" "B") hline ("7" "8")) #'tblfn-to-number-if-possible) => (("1" "2") hline (1 2) (3 4) (5 6) ("A" "B") hline (7 8))
+
+(defun tblfn-numberize (table)
+  "Convert all fields (except header) in TABLE to numbers where possible.
+
+Same as (tblfn-map-fields table #\\='tblfn-to-number-if-possible)."
+  (tblfn-map-fields table #'tblfn-to-number-if-possible))
+
 
 ;;;; Multi-Table Operations
 
@@ -2725,6 +2752,21 @@ When OBJECT is a string, `tblfn-number-string-p' is used to determine
 whether it can be interpreted as a number.
 Commas in strings are removed beforehand."
   (tblfn-to-number object t (or default 0)))
+
+(defun tblfn-to-number-if-possible (object)
+  "Convert OBJECT to a number if it is a numeric string, otherwise return
+as-is.
+
+If OBJECT is a string that can be interpreted as a number (as determined
+by `tblfn-number-string-p'), convert it to a number using
+`tblfn-to-number'.  Otherwise, return OBJECT unchanged.
+
+This function is useful for conditionally converting string
+representations of numbers while preserving non-numeric values."
+  (if (and (stringp object)
+           (tblfn-number-string-p object))
+      (tblfn-to-number object)
+    object))
 
 
 ;;;; CSV I/O

@@ -1,6 +1,9 @@
 #+TITLE: Simple Data Table Functions for Emacs TODO List
 
 * Inbox
+** TODO ヘッダーに列名以外がある時を考慮するかどうか
+今は多くの関数でtblfn-add-header-rowの第二引数に(tblfn-column-names table)を引き渡している。しかし本来は元のテーブルのヘッダー行を丸丸復元すべきではないか。つまりhlineが使われている場合でかつその前に複数行ある場合はそれを全て復元すべきでは無いか。
+
 ** TODO tblfn-data-row-pをリストに限定するかどうか
 本来であればリストに限定すべき。
 しかしTEST:の多くの部分で非リストの行を使っている。
@@ -26,7 +29,6 @@
 これはある意味当然の仕様にも思えるが、現実問題これでは列数が0になってしまうので、次のテーブル操作がまともにできない。[[elisp-function:tblfn-add-header-row]]はダミーの列名を生成すべきではないだろうか？
 
 ** TODO 全体を文字列化する関数を追加する
-** TODO 全体を数値化する関数を追加する
 ** TODO org-modeから使うときに数値を文字列のままにできないか
 * Finished
 ** CANCELLED footerをできるだけキープすべき？
@@ -57,3 +59,9 @@ tblfn--let-argsを作った。
 ** DONE tblfn-joinのキーワード引数化
 CLOSED: [2026-01-06 Tue 20:58]
 tblfn--let-argsを使った。
+** DONE 全フィールドに関数を適用する関数を追加する
+CLOSED: [2026-01-10 Sat 17:34]
+tblfn-map-field
+** DONE 全フィールドを可能な限り数値化する関数を追加する
+CLOSED: [2026-01-10 Sat 17:34]
+tblfn-numberize

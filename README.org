@@ -293,6 +293,8 @@ Additional examples can be found in [[file:example/example.org][example/example.
 - Table Transformation
   - tblfn-update
   - tblfn-make-row-transformer
+  - tblfn-map-fields
+  - tblfn-numberize
 - Multi-Table Operations
   - Row Concatenation
     - tblfn-append-body-rows
@@ -334,6 +336,7 @@ Additional examples can be found in [[file:example/example.org][example/example.
   - tblfn-string-to-number
   - tblfn-to-number
   - tblfn-to-number-forced
+  - tblfn-to-number-if-possible
 - CSV I/O
   - tblfn-read-csv-file
   - tblfn-write-csv-file
