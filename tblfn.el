@@ -883,6 +883,7 @@ passed to FUNCTION."
     (nreverse result)))
 ;; TEST: (tblfn-map-body-row nil (lambda (row) (apply #'+ row))) => nil
 ;; TEST: (tblfn-map-body-row '(("A" "B") ("a" "b") hline (1 2) (3 4) (5 6) hline (7 8)) (lambda (row) (apply #'+ row))) => (3 7 11)
+;; TEST: (tblfn-map-body-row '(("A" "B") ("a" "b") hline (1 2) (3 4) (5 6) hline (7 8)) #'identity) => ((1 2) (3 4) (5 6))
 
 (defun tblfn-body-row-count (table)
   "Return the number of valid data rows in TABLE's body.
@@ -1677,6 +1678,7 @@ Examples:
 ;; TEST: (tblfn-update '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) '(equal row-index 1) (lambda (row) (mapcar (lambda (x) (+ x (* 10 tblfn-current-row-index))) row))) => (("A" "B" "C") hline (1 2 3) (14 15 16) (7 8 9))
 ;; TEST: (tblfn-update '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) t '(append (cdr row) (list (car row)))) => (("A" "B" "C") hline (2 3 1) (5 6 4) (8 9 7))
 ;; TEST: (tblfn-update '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) t "C" '(apply #'+ row)) => (("A" "B" "C") hline (1 2 6) (4 5 15) (7 8 24))
+;; TEST: (tblfn-update '(("A" "B" "C") hline ("1,000" "2,000" "3,000") ("4,000" "5,000" "6,000") ("7,000" "8,000" "9,000") hline ("-1" "-2" "-3")) t "C" #'tblfn-to-number) => (("A" "B" "C") hline ("1,000" "2,000" 3000) ("4,000" "5,000" 6000) ("7,000" "8,000" 9000))
 
 (defun tblfn-make-row-transformer (table row-transformer-spec)
   (cond
@@ -1709,7 +1711,7 @@ Examples:
                          ;; FUNCTION(COL)
                          ((and (pred functionp) fun)
                           `(setf (nth ,col-index row)
-                                 (funcall ,fun (nth ,col-index row))))
+                                 (funcall (function ,fun) (nth ,col-index row))))
                          ;; STRING or NUMBER
                          ((and (or (pred stringp) (pred numberp)) value)
                           `(setf (nth ,col-index row)
@@ -2254,6 +2256,8 @@ Examples:
 ;; TEST: (tblfn-transpose--generate-column-names '((1 2 3) (4 5 6)) 'empty-string) => (((1 2 3) (4 5 6)) "" "" "")
 ;; TEST: (tblfn-transpose--generate-column-names '((1 2 3) (4 5 6)) "c%d") => (((1 2 3) (4 5 6)) "c0" "c1" "c2")
 ;; TEST: (tblfn-transpose--generate-column-names '((1 2 3) (4 5 6)) (lambda (i) (format "v%d" i))) => (((1 2 3) (4 5 6)) "v0" "v1" "v2")
+;; TEST: (tblfn-transpose--generate-column-names '((1 2 3) (4 5 6)) #'number-to-string) => (((1 2 3) (4 5 6)) "0" "1" "2")
+;; TEST: (tblfn-transpose--generate-column-names '((1 2 3 4 5 6) (7 8 9 10 11 12)) '("A" number-to-string nil)) => (((1 2 3 4 5 6) (7 8 9 10 11 12)) "A" "1" "2" "3" "4" "5")
 ;; TEST: (tblfn-transpose--generate-column-names '((1 2 3 4 5 6) (7 8 9 10 11 12)) `("A" ,(lambda (i) (format "v%d" i)) nil)) => (((1 2 3 4 5 6) (7 8 9 10 11 12)) "A" "v1" "2" "3" "4" "5")
 ;; TEST: (tblfn-transpose--generate-column-names '((1 2 3 4 5 6) (7 8 9 10 11 12)) `("A" ,(lambda (i) (format "v%d" i)) . "c%d")) => (((1 2 3 4 5 6) (7 8 9 10 11 12)) "A" "v1" "c2" "c3" "c4" "c5")
 ;; TEST: (tblfn-transpose--generate-column-names '((1 2 3 4 5 6) (7 8 9 10 11 12)) `("A" ,(lambda (i) (format "v%d" i)) . ,(lambda (i) (format "x%d" i)))) => (((1 2 3 4 5 6) (7 8 9 10 11 12)) "A" "v1" "x2" "x3" "x4" "x5")
