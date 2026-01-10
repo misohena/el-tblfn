@@ -352,6 +352,7 @@ Additional examples can be found in [[file:example/example.org][example/example.
   - tblfn-normalize-index-clamp
 - For Maintenance
   - tblfn--generate-function-list-for-readme
+  - tblfn--update-function-list-in-readme
 
 * Technical Notes
 ** Methods for Chaining Table Operations

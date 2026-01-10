@@ -2931,7 +2931,8 @@ Return nil if COUNT is 0 or negative."
 
 
 (defun tblfn--generate-function-list-for-readme ()
-  "Generate headings for README.org. The result is stored in the kill ring."
+  "Generate headings for README.org.
+The result is stored in the kill ring if called by interactively."
   (interactive)
   (let ((level 0)
         (result-text "")
@@ -2963,9 +2964,25 @@ Return nil if COUNT is 0 or negative."
                    "- " funname
                    ;; " " params
                    "\n")))))))
-    (kill-new result-text)
+    (when (called-interactively-p 'interactive)
+      (kill-new result-text)
+      (message "Copied"))
     result-text))
 ;; EXAMPLE: (tblfn--generate-function-list-for-readme)
+
+(defun tblfn--update-function-list-in-readme ()
+  (interactive)
+  (let ((function-list (tblfn--generate-function-list-for-readme)))
+    (dolist (file '("README.org" "README-ja.org"))
+      (find-file file)
+      (goto-char (point-min))
+      (re-search-forward "^\\* \\(Function List\\|関数一覧\\)")
+      (forward-line)
+      (let ((start (point))
+            (end (progn (re-search-forward "^\\*") (forward-line 0) (point))))
+        (delete-region start end)
+        (insert "\n" function-list "\n")))))
+;; EXAMPLE: (tblfn--update-function-list-in-readme)
 
 
 (provide 'tblfn)

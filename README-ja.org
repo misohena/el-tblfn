@@ -353,6 +353,7 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - tblfn-normalize-index-clamp
 - For Maintenance
   - tblfn--generate-function-list-for-readme
+  - tblfn--update-function-list-in-readme
 
 * 蘊蓄
 ** 連続してテーブルの加工を行う方法
