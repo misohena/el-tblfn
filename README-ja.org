@@ -473,7 +473,7 @@ eldocで引数のハイライト位置がずれるのは残念ですが、まだ
 
 データ行では *ない* ものは次のいずれかです。
 
-- ~hline~ シンボルのみの行
+- リスト(nilまたはコンスセル)以外 (~hline~ シンボルを含む)
 - org-mode用動作時で、先頭の列が ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~ のいずれかの場合
 
 org-mode用動作をするかどうかは変数 ~tblfn-for-org~ によって決まります。 ~t~ の場合、または ~auto~ で現在のバッファがorg-modeの場合はorg-mode用の動作をします。先頭が  ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~ の行はorg-modeにおいてはRecalc Marksと呼ばれる特殊な行([[https://orgmode.org/manual/Advanced-features.html][Advanced features (The Org Manual)]])なので、処理の対象から除外します。

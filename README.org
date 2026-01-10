@@ -472,7 +472,7 @@ In this library, valid rows that are targets of normal calculations are called d
 
 The following are *not* data rows:
 
-- Rows consisting only of the ~hline~ symbol
+- Anything other than a list (nil or cons cell), including the ~hline~ symbol
 - When operating in org-mode mode, rows where the first column is one of ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~
 
 Whether to operate in org-mode mode is determined by the variable ~tblfn-for-org~. If set to ~t~, or if set to ~auto~ and the current buffer is in org-mode, it operates in org-mode mode. Rows beginning with ~"!"~ ~"^"~ ~"_"~ ~"$"~ ~"/"~ are special rows called Recalc Marks in org-mode ([[https://orgmode.org/manual/Advanced-features.html][Advanced features (The Org Manual)]]), so they are excluded from processing.

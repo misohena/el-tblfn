@@ -266,15 +266,23 @@ rows to be ignored for org-mode."
 ;;;; Row Types
 
 
-(defsubst tblfn-non-data-row-p (row)
-  "Return non-nil if ROW is a special row that cannot be treated as a
-normal computational row."
-  (or (tblfn-hline-p row)
-      (tblfn-org-invalid-row-p row)))
-
 (defsubst tblfn-data-row-p (row)
-  "Return the opposite of `tblfn-non-data-row-p'."
-  (not (tblfn-non-data-row-p row)))
+  "Return non-nil if ROW is a normal row that is subject to processing.
+
+Returns non-nil when ROW is one of the following:
+- nil (a row with 0 columns)
+- A cons cell (a row with 1 or more columns) and not an invalid row for
+  org-mode (See `tblfn-org-invalid-row-p')
+
+Conversely, returns nil in the following cases:
+- An invalid row for org-mode (See `tblfn-org-invalid-row-p')
+- Anything other than a list, including `hline'"
+  (and (listp row)
+       (not (tblfn-org-invalid-row-p row))))
+
+(defsubst tblfn-non-data-row-p (row)
+  "Return the logical negation of `tblfn-data-row-p'."
+  (not (tblfn-data-row-p row)))
 
 
 ;;;; Columns
@@ -903,10 +911,10 @@ Hlines and org-mode special rows are not counted."
         (cl-incf count))))
     (if has-hline count-before-last-hline count)))
 ;; TEST: (tblfn-body-row-count nil) => 0
-;; TEST: (tblfn-body-row-count '(1 hline 2 3)) => 2
-;; TEST: (tblfn-body-row-count '(1 hline)) => 0
-;; TEST: (tblfn-body-row-count '(1 hline 2 3 4 hline 5 6 7 8 hline 9 10)) => 7
-;; TEST: (let ((tblfn-for-org t)) (tblfn-body-row-count '(2 ("!" "a") 3 4 hline 5 ("!" "a") 6 hline 7 8))) => 2
+;; TEST: (tblfn-body-row-count '((1) hline (2) (3))) => 2
+;; TEST: (tblfn-body-row-count '((1) hline)) => 0
+;; TEST: (tblfn-body-row-count '((1) hline (2) (3) (4) hline (5) (6) (7) (8) hline (9) (10))) => 7
+;; TEST: (let ((tblfn-for-org t)) (tblfn-body-row-count '((2) ("!" "a") (3) (4) hline (5) ("!" "a") (6) hline (7) (8)))) => 2
 
 (defun tblfn-body-row-index-to-table-row-index (table row-index
                                                       &optional noerror)
@@ -947,21 +955,21 @@ ROW-INDEX is out of range."
     (unless noerror
       (signal 'args-out-of-range (list row-index)))))
 ;; TEST: (tblfn-body-row-index-to-table-row-index nil 1) => error
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 1 2 3 4) -5) => error
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 1 2 3 4) -4) => 1
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 1 2 3 4) -1) => 4
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 1 2 3 4) 3) => 4
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 1 2 3 4) 4) => error
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 hline 1 2 3 4 hline 5) -5) => error
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 hline 1 2 3 4 hline 5) -4) => 2
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 hline 1 2 3 4 hline 5) -1) => 5
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 hline 1 2 3 4 hline 5) 3) => 5
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 hline 1 2 3 4 hline 5) 4) => error
-;; TEST: (let ((tblfn-for-org t)) (tblfn-body-row-index-to-table-row-index '(0 hline 1 ("!") 2 3 4 hline 5) 2)) => 5
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 hline 2 3 4 hline 6 7 8 9 hline 11 12) 1) => 3
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) (1) (2) (3) (4)) -5) => error
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) (1) (2) (3) (4)) -4) => 1
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) (1) (2) (3) (4)) -1) => 4
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) (1) (2) (3) (4)) 3) => 4
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) (1) (2) (3) (4)) 4) => error
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) hline (1) (2) (3) (4) hline (5)) -5) => error
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) hline (1) (2) (3) (4) hline (5)) -4) => 2
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) hline (1) (2) (3) (4) hline (5)) -1) => 5
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) hline (1) (2) (3) (4) hline (5)) 3) => 5
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) hline (1) (2) (3) (4) hline (5)) 4) => error
+;; TEST: (let ((tblfn-for-org t)) (tblfn-body-row-index-to-table-row-index '((0) hline (1) ("!") (2) (3) (4) hline (5)) 2)) => 5
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) hline (2) (3) (4) hline (6) (7) (8) (9) hline (11) (12)) 1) => 3
 ;; TEST: (tblfn-body-row-index-to-table-row-index nil 1 t) => nil
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 1 2 3 4) -100 t) => nil
-;; TEST: (tblfn-body-row-index-to-table-row-index '(0 hline 1 2 3 4 hline 5) 100 t) => nil
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) (1) (2) (3) (4)) -100 t) => nil
+;; TEST: (tblfn-body-row-index-to-table-row-index '((0) hline (1) (2) (3) (4) hline (5)) 100 t) => nil
 
 (defun tblfn-body (table &optional force-copy)
   "Return TABLE without column names or footer rows.
@@ -983,18 +991,18 @@ All hlines and special rows that should be ignored are removed."
       (if force-copy
           (copy-sequence table-wo-header)
         table-wo-header))))
-;; TEST: (tblfn-body '(1 2 3)) => (2 3)
-;; TEST: (tblfn-body '(1 hline 2 3)) => (2 3)
-;; TEST: (tblfn-body '(1 hline)) => nil
-;; TEST: (tblfn-body '(1 hline 2)) => (2)
-;; TEST: (tblfn-body '(1 hline 2 hline 3)) => (2)
-;; TEST: (tblfn-body '(1 hline 2 3 hline)) => (2 3)
-;; TEST: (tblfn-body '(1 2 3 hline 4)) => (4)
-;; TEST: (tblfn-body '(1 2 3 4 hline)) => nil
-;; TEST: (tblfn-body '(2 ("!" "a") 3 4 hline)) => nil
-;; TEST: (let ((tblfn-for-org t)) (tblfn-body '(2 ("!" "a") 3 4 5 ("!" "a") 6))) => (3 4 5 6)
-;; TEST: (let ((tblfn-for-org t)) (tblfn-body '(2 ("!" "a") 3 4 hline 5 ("!" "a") 6))) => (5 6)
-;; TEST: (let ((tblfn-for-org t)) (tblfn-body '(2 ("!" "a") 3 4 hline 5 ("!" "a") 6 hline 7 8))) => (5 6)
+;; TEST: (tblfn-body '((1) (2) (3))) => ((2) (3))
+;; TEST: (tblfn-body '((1) hline (2) (3))) => ((2) (3))
+;; TEST: (tblfn-body '((1) hline)) => nil
+;; TEST: (tblfn-body '((1) hline (2))) => ((2))
+;; TEST: (tblfn-body '((1) hline (2) hline (3))) => ((2))
+;; TEST: (tblfn-body '((1) hline (2) (3) hline)) => ((2) (3))
+;; TEST: (tblfn-body '((1) (2) (3) hline (4))) => ((4))
+;; TEST: (tblfn-body '((1) (2) (3) (4) hline)) => nil
+;; TEST: (tblfn-body '((2) ("!" "a") (3) (4) hline)) => nil
+;; TEST: (let ((tblfn-for-org t)) (tblfn-body '((2) ("!" "a") (3) (4) (5) ("!" "a") (6)))) => ((3) (4) (5) (6))
+;; TEST: (let ((tblfn-for-org t)) (tblfn-body '((2) ("!" "a") (3) (4) hline (5) ("!" "a") (6)))) => ((5) (6))
+;; TEST: (let ((tblfn-for-org t)) (tblfn-body '((2) ("!" "a") (3) (4) hline (5) ("!" "a") (6) hline (7) (8)))) => ((5) (6))
 
 (defun tblfn-take-body-rows-and-rest (table count)
   "Take the first COUNT rows from TABLE's body.
@@ -1320,12 +1328,12 @@ ROW-INDEX is out of range."
   (when-let* ((tri (tblfn-body-row-index-to-table-row-index
                     table row-index noerror)))
     (tblfn-nth-row table tri noerror)))
-;; TEST: (tblfn-nth-body-row '(1 2 hline 3 4 5 6 hline 7 8) -1) => 6
-;; TEST: (tblfn-nth-body-row '(1 2 hline 3 4 5 6 hline 7 8) -10) => error
-;; TEST: (tblfn-nth-body-row '(1 2 hline 3 4 5 6 hline 7 8) -10 t) => nil
-;; TEST: (tblfn-nth-body-row '(1 2 hline 3 4 5 6 hline 7 8) 0) => 3
-;; TEST: (tblfn-nth-body-row '(1 2 hline 3 4 5 6 hline 7 8) 100) => error
-;; TEST: (tblfn-nth-body-row '(1 2 hline 3 4 5 6 hline 7 8) 5) => error
+;; TEST: (tblfn-nth-body-row '((1) (2) hline (3) (4) (5) (6) hline (7) (8)) -1) => (6)
+;; TEST: (tblfn-nth-body-row '((1) (2) hline (3) (4) (5) (6) hline (7) (8)) -10) => error
+;; TEST: (tblfn-nth-body-row '((1) (2) hline (3) (4) (5) (6) hline (7) (8)) -10 t) => nil
+;; TEST: (tblfn-nth-body-row '((1) (2) hline (3) (4) (5) (6) hline (7) (8)) 0) => (3)
+;; TEST: (tblfn-nth-body-row '((1) (2) hline (3) (4) (5) (6) hline (7) (8)) 100) => error
+;; TEST: (tblfn-nth-body-row '((1) (2) hline (3) (4) (5) (6) hline (7) (8)) 5) => error
 
 (defun tblfn-nth-row (table row-index &optional noerror)
   "Return the ROW-INDEX-th row in TABLE.
@@ -1838,17 +1846,17 @@ The returned table does not include the footer."
        target-body)
      (tblfn-column-names target-table)
      target-table)))
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) nil '(10 11 12 13 14)) => (0 1 2 3 4 5 6 11 12 13 14)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) -1 '(10 11 12 13 14)) => (0 1 2 3 4 5 11 12 13 14 6)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) 2 '(10 11 12 13 14) -1) => (0 1 2 14 3 4 5 6)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) 2 '(10 11 12 13 14)) => (0 1 2 11 12 13 14 3 4 5 6)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) nil '(10 11 12 13 14) 2) => (0 1 2 3 4 5 6 13 14)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) nil '(10 11 12 13 14) 3) => (0 1 2 3 4 5 6 14)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) nil '(10 11 12 13 14) 4) => (0 1 2 3 4 5 6)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) nil '(10 11 12 13 14) 5) => error
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) nil '(10 11 12 13 14) 1 -1) => (0 1 2 3 4 5 6 12 13)
-;; TEST: (tblfn-insert-body-rows-at '(0 1 2 3 4 5 6) nil '(10 11 12 13 14) -1 1) => (0 1 2 3 4 5 6)
-;; TEST: (tblfn-insert-body-rows-at '(0 hline 1 2 3 4 5 6 hline 7 8) 1 '(10 hline 11 12 13 14 15 hline 16) 1 -1) => (0 hline 1 12 13 14 2 3 4 5 6)
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14))) => ((0) (1) (2) (3) (4) (5) (6) (11) (12) (13) (14))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) -1 '((10) (11) (12) (13) (14))) => ((0) (1) (2) (3) (4) (5) (11) (12) (13) (14) (6))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) 2 '((10) (11) (12) (13) (14)) -1) => ((0) (1) (2) (14) (3) (4) (5) (6))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) 2 '((10) (11) (12) (13) (14))) => ((0) (1) (2) (11) (12) (13) (14) (3) (4) (5) (6))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) 2) => ((0) (1) (2) (3) (4) (5) (6) (13) (14))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) 3) => ((0) (1) (2) (3) (4) (5) (6) (14))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) 4) => ((0) (1) (2) (3) (4) (5) (6))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) 5) => error
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) 1 -1) => ((0) (1) (2) (3) (4) (5) (6) (12) (13))
+;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) -1 1) => ((0) (1) (2) (3) (4) (5) (6))
+;; TEST: (tblfn-insert-body-rows-at '((0) hline (1) (2) (3) (4) (5) (6) hline (7) (8)) 1 '((10) hline (11) (12) (13) (14) (15) hline (16)) 1 -1) => ((0) hline (1) (12) (13) (14) (2) (3) (4) (5) (6))
 
 (defun tblfn-insert-rows-at (target-table target-start source-table
                                           &optional source-start source-end)
