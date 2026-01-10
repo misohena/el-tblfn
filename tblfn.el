@@ -549,6 +549,7 @@ Example:
            (cl-loop for cons-cell on body-list
                     do (setcar cons-cell (cdr (car cons-cell)))))
          (nreverse result))
+       ;; TODO: 2行以上のヘッダー行に対応する
        (apply #'append (mapcar #'tblfn-column-names tables))
        (car tables)))))
 ;; TEST: (tblfn-append-columns) => nil
@@ -737,6 +738,32 @@ error."
 
 ;;;;; Header
 
+(defun tblfn-header (table)
+  "Return only the header portion of TABLE.
+
+Always creates and returns a new list.
+
+The header refers to the rows up to the first `hline' in the table, or
+the first row if there is no `hline'.
+
+If TABLE contains `hline', the returned list always ends with `hline'.
+If it does not contain `hline' but `tblfn-use-hlines-p' returns non-nil,
+`hline' is appended to the end.
+Otherwise, only the first row is returned."
+  (if-let* ((first-hline-cell (memq 'hline table)))
+      (nconc
+       (tblfn-take-until-cons-cell table first-hline-cell)
+       (list 'hline))
+    (if (tblfn-use-hlines-p)
+        (list (car table) 'hline)
+      (list (car table)))))
+;; TEST: (tblfn-header '(("A"))) => (("A"))
+;; TEST: (tblfn-header '(("A") (1))) => (("A"))
+;; TEST: (let ((tblfn-use-hlines t)) (tblfn-header '(("A") (1)))) => (("A") hline)
+;; TEST: (tblfn-header '(("A") hline (1))) => (("A") hline)
+;; TEST: (tblfn-header '(("A") hline (1) (2) hline (3))) => (("A") hline)
+;; TEST: (tblfn-header '(("A") (0) hline (1) (2) hline (3))) => (("A") (0) hline)
+
 (defun tblfn-after-header (table)
   "Return TABLE without the header row.
 
@@ -767,6 +794,13 @@ already exists and TABLE is returned as-is without modification."
   (if (or (memq 'hline ref-table) (tblfn-use-hlines-p))
       (cons column-names (cons 'hline table))
     (cons column-names table)))
+
+(defun tblfn-prepend-header (body-table header-table)
+  "Return a table with the header portion of HEADER-TABLE prepended to
+BODY-TABLE."
+  (nconc
+   (tblfn-header header-table)
+   body-table))
 
 ;;;;; Footer
 
@@ -1118,7 +1152,7 @@ from the end.
 When nil, ROW is placed at the very end of the returned table's body.
 
 The returned table does not include the footer."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (let* ((splitted (tblfn-take-body-rows-and-rest
                      table
                      (tblfn-normalize-index
@@ -1130,7 +1164,6 @@ The returned table does not include the footer."
      (nconc first-body
             (list row)
             (tblfn-data-rows-before-last-hline rest)))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-insert-nth-body-row '(("A") hline (0) (1) (2) hline (3)) 0 '("X")) => (("A") hline ("X") (0) (1) (2))
 ;; TEST: (tblfn-insert-nth-body-row '(("A") hline (0) (1) (2) hline (3)) -1 '("X")) => (("A") hline (0) (1) ("X") (2))
@@ -1138,6 +1171,7 @@ The returned table does not include the footer."
 ;; TEST: (tblfn-insert-nth-body-row '(("A") hline (0) (1) (2) hline (3)) -3 '("X")) => (("A") hline ("X") (0) (1) (2))
 ;; TEST: (tblfn-insert-nth-body-row '(("A") hline (0) (1) (2) hline (3)) -4 '("X")) => error
 ;; TEST: (tblfn-insert-nth-body-row '(("A") hline (0) (1) (2) hline (3)) 2 '("X")) => (("A") hline (0) (1) ("X") (2))
+;; TEST: (tblfn-insert-nth-body-row '(("" "a") ("!" "A") hline ("" 0) ("" 1) ("" 2)) 2 '("" "X")) => (("" "a") ("!" "A") hline ("" 0) ("" 1) ("" "X") ("" 2))
 
 (defun tblfn-insert-nth-row (table row-index row)
   "Return a table with ROW inserted at ROW-INDEX in TABLE.
@@ -1188,7 +1222,7 @@ The returned table does not include the footer."
                   collect x)
          #'<))
 
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (let ((count 0)
          (result nil))
      (tblfn-mapc-body-row table
@@ -1200,10 +1234,10 @@ The returned table does not include the footer."
                               (push row result))
                             (cl-incf count)))
      (nreverse result))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-remove-nth-body-row '(("A") hline (0) (1) (2) (3) (4) (5) (6)) 4 2)
 ;; TEST: (tblfn-remove-nth-body-row '(("A") hline (0) (1) (2) (3) (4) (5) (6)) -1 -4 -100 -2 -4) => (("A") hline (0) (1) (2) (4))
+;; TEST: (tblfn-remove-nth-body-row '(("" "a") ("!" "A") hline ("" 0) ("" 1) ("" 2)) 1) => (("" "a") ("!" "A") hline ("" 0) ("" 2))
 
 (defun tblfn-remove-nth-row (table row-index)
   "Return a table with the row at ROW-INDEX removed from TABLE.
@@ -1239,7 +1273,7 @@ the body, not counting hlines or invalid rows.
 Negative numbers represent relative positions from the end of the body.
 
 The returned table does not include the footer."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (let* ((body (tblfn-body table))
           (nrows (length body)))
      (unless start-row-index (setq start-row-index 0))
@@ -1251,13 +1285,13 @@ The returned table does not include the footer."
           (tblfn-slice body 0 start-row-index)
           (nthcdr end-row-index body))
        body))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-remove-body-rows-between '(("A") hline (0) (1) (2) (3) (4) (5) (6) (7)) 0 8) => (("A") hline)
 ;; TEST: (tblfn-remove-body-rows-between '(("A") hline (0) (1) (2) (3) (4) (5) (6) (7)) 0 8) => (("A") hline)
 ;; TEST: (tblfn-remove-body-rows-between '(("A") hline (0) (1) (2) (3) (4) (5) (6) (7)) 1 -1) => (("A") hline (0) (7))
 ;; TEST: (tblfn-remove-body-rows-between '(("A") hline (0) (1) (2) (3) (4) (5) (6) (7)) -5 -2) => (("A") hline (0) (1) (2) (6) (7))
 ;; TEST: (tblfn-remove-body-rows-between '(("A") hline (0) (1) (2) (3) (4) (5) (6) (7)) 4) => (("A") hline (0) (1) (2) (3))
+;; TEST: (tblfn-remove-body-rows-between '(("A") (-1) hline (0) (1) (2) (3) (4) (5) (6) (7)) 2 4) => (("A") (-1) hline (0) (1) (4) (5) (6) (7))
 
 (defun tblfn-remove-if (table condition-sexp-or-colspec
                               &optional value binop)
@@ -1268,7 +1302,7 @@ See `tblfn-make-row-predicate-from-condition-spec' for how to specify
 the condition.
 
 The returned table does not include the footer."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (let ((pred (tblfn-make-row-predicate-from-condition-spec
                 table condition-sexp-or-colspec value binop))
          (result nil))
@@ -1277,9 +1311,9 @@ The returned table does not include the footer."
                             (unless (funcall pred row)
                               (push row result))))
      (nreverse result))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-remove-if '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) '(equal Category "Vegetable")) => (("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Beef" "Meat" "800"))
+;; TEST: (tblfn-remove-if '(("Product" "Category" "Price") ("0" "1" "2") hline ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) '(equal Category "Vegetable")) => (("Product" "Category" "Price") ("0" "1" "2") hline ("Apple" "Fruit" "150") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Beef" "Meat" "800"))
 
 ;;;;; Row Iteration
 
@@ -1406,11 +1440,12 @@ to the end.  Non-data rows such as hlines and org-mode special rows are
 excluded from the count.
 
 The returned table does not include the footer."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (tblfn-slice (tblfn-body table) start-body-row-index end-body-row-index)
-   (tblfn-column-names table)
    table))
+;; TEST: (tblfn-slice-body '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) (10 11 12) (13 14 15)) 1 3) => (("A" "B" "C") hline (4 5 6) (7 8 9))
 ;; TEST: (tblfn-slice-body '(("A" "B" "C") hline (1 2 3) hline (4 5 6) (7 8 9) (10 11 12) hline (13 14 15)) 1 -1) => (("A" "B" "C") hline (4 5 6) (7 8 9))
+;; TEST: (tblfn-slice-body '(("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) hline (4 5 6) (7 8 9) (10 11 12) hline (13 14 15)) 1 -1) => (("A" "B" "C") ("-1" "-2" "-3") hline (4 5 6) (7 8 9))
 
 ;;;;; Row Counting
 
@@ -1452,7 +1487,7 @@ See `tblfn-make-row-predicate-from-condition-spec' for how to specify
 the condition.
 
 The returned table does not include the footer."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (let ((pred (tblfn-make-row-predicate-from-condition-spec
                 table condition-sexp-or-colspec value binop))
          (result nil))
@@ -1461,11 +1496,11 @@ The returned table does not include the footer."
                             (when (funcall pred row)
                               (push row result))))
      (nreverse result))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-filter '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) '(equal Category "Vegetable")) => (("Product" "Category" "Price") ("Tomato" "Vegetable" "200") ("Potato" "Vegetable" "80"))
 ;; TEST: (tblfn-filter '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) "Category" "Vegetable") => (("Product" "Category" "Price") ("Tomato" "Vegetable" "200") ("Potato" "Vegetable" "80"))
 ;; TEST: (tblfn-filter '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) '(equal row '("Cheese" "Dairy" "450"))) => (("Product" "Category" "Price") ("Cheese" "Dairy" "450"))
+;; TEST: (tblfn-filter '(("Product" "Category" "Price") ("1" "2" "3") hline ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) '(>= (tblfn-to-number Price) 100)) => (("Product" "Category" "Price") ("1" "2" "3") hline ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Beef" "Meat" "800"))
 
 (defun tblfn-make-row-predicate-from-condition-spec
     (table condition-sexp-or-colspec value binop)
@@ -1535,11 +1570,11 @@ non-nil are considered to match the condition."
   "Return a table with duplicate rows removed from TABLE's body.
 
 The returned table does not include the footer."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (seq-uniq (tblfn-body table))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-unique '(("A" "B" "C") hline (1 2 3) (4 5 6) (1 2 3) (7 8 9) (4 5 6) hline (4 5 6))) => (("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9))
+;; TEST: (tblfn-unique '(("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) (4 5 6) (1 2 3) (7 8 9) (4 5 6) hline (4 5 6))) => (("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) (4 5 6) (7 8 9))
 
 ;;;;; Row Ordering
 
@@ -1570,14 +1605,14 @@ The returned table does not include the footer."
          (row-order-fun
           (lambda (row-a row-b)
             (funcall col-order-fun (nth col row-a) (nth col row-b)))))
-    (tblfn-add-header-row
+    (tblfn-prepend-header
      (seq-sort row-order-fun
                (tblfn-body table))
-     (tblfn-column-names table)
      table)))
 ;; TEST: (tblfn-sort '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) "Price") => (("Product" "Category" "Price") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Beef" "Meat" "800"))
 ;; TEST: (tblfn-sort '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) "Price" 'desc) => (("Product" "Category" "Price") ("Beef" "Meat" "800") ("Cheese" "Dairy" "450") ("Tomato" "Vegetable" "200") ("Apple" "Fruit" "150") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80"))
 ;; TEST: (tblfn-sort '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) "Price" #'value<) => (("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800"))
+;; TEST: (tblfn-sort '(("Product" "Category" "Price") ("-1" "-2" "-3") hline ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) "Price" #'value<) => (("Product" "Category" "Price") ("-1" "-2" "-3") hline ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800"))
 
 (defun tblfn-reverse (table)
   "Return a table with all rows in TABLE's body reversed in order.
@@ -1603,7 +1638,7 @@ The returned table does not include the footer."
   "Return a table with the rows in TABLE's body randomly shuffled.
 
 The returned table does not include the footer."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (let* ((body (copy-sequence (tblfn-body table)))
           (rest body)
           (rest-len (length rest)))
@@ -1612,9 +1647,9 @@ The returned table does not include the footer."
        (setq rest (cdr rest)
              rest-len (1- rest-len)))
      body)
-   (tblfn-column-names table)
    table))
 ;; EXAMPLE: (tblfn-shuffle '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) (10 11 12) hline (100 101 102)))
+;; EXAMPLE: (tblfn-shuffle '(("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) (4 5 6) (7 8 9) (10 11 12) hline (100 101 102)))
 
 ;;;; Table Transformation
 
@@ -1662,7 +1697,7 @@ Examples:
   ;; Transform entire row with custom function
   (tblfn-update table \\='(> row-index 5)
                 (lambda (row) (mapcar #\\='upcase row)))"
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (let ((row-pred (tblfn-make-row-predicate-from-condition-sexp
                     table row-condition-sexp))
          (row-transformer (tblfn-make-row-transformer
@@ -1676,7 +1711,6 @@ Examples:
                                row)
                              result)))
      (nreverse result))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-update '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) t "B" "bb") => (("A" "B" "C") hline (1 "bb" 3) (4 "bb" 6) (7 "bb" 9))
 ;; TEST: (tblfn-update '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) t "C" (lambda (col) (* 2 col))) => (("A" "B" "C") hline (1 2 6) (4 5 12) (7 8 18))
@@ -1687,6 +1721,7 @@ Examples:
 ;; TEST: (tblfn-update '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) t '(append (cdr row) (list (car row)))) => (("A" "B" "C") hline (2 3 1) (5 6 4) (8 9 7))
 ;; TEST: (tblfn-update '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) t "C" '(apply #'+ row)) => (("A" "B" "C") hline (1 2 6) (4 5 15) (7 8 24))
 ;; TEST: (tblfn-update '(("A" "B" "C") hline ("1,000" "2,000" "3,000") ("4,000" "5,000" "6,000") ("7,000" "8,000" "9,000") hline ("-1" "-2" "-3")) t "C" #'tblfn-to-number) => (("A" "B" "C") hline ("1,000" "2,000" 3000) ("4,000" "5,000" 6000) ("7,000" "8,000" 9000))
+;; TEST: (tblfn-update '(("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) (4 5 6) (7 8 9) hline (-1 -2 -3)) t "B" "bb") => (("A" "B" "C") ("-1" "-2" "-3") hline (1 "bb" 3) (4 "bb" 6) (7 "bb" 9))
 
 (defun tblfn-make-row-transformer (table row-transformer-spec)
   (cond
@@ -1744,16 +1779,15 @@ The header portion of TABLE is not included in processing.
 The body and footer are included in processing.
 Non-data rows are not included in processing.
 Field values not included in processing are preserved as-is."
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (mapcar (lambda (row)
              (if (tblfn-data-row-p row)
                  (mapcar field-function row)
                row))
            (tblfn-after-header table))
-   (tblfn-column-names table)
    table))
 ;; TEST: (tblfn-map-fields '(("1" "2") ("1" "2") ("3" "4") ("5" "6") ("A" "B")) #'tblfn-to-number-if-possible) => (("1" "2") (1 2) (3 4) (5 6) ("A" "B"))
-;; TEST: (tblfn-map-fields '(("1" "2") (3 4) hline ("1" "2") ("3" "4") ("5" "6") ("A" "B") hline ("7" "8")) #'tblfn-to-number-if-possible) => (("1" "2") hline (1 2) (3 4) (5 6) ("A" "B") hline (7 8))
+;; TEST: (tblfn-map-fields '(("1" "2") (3 4) hline ("1" "2") ("3" "4") ("5" "6") ("A" "B") hline ("7" "8")) #'tblfn-to-number-if-possible) => (("1" "2") (3 4) hline (1 2) (3 4) (5 6) ("A" "B") hline (7 8))
 
 (defun tblfn-numberize (table)
   "Convert all fields (except header) in TABLE to numbers where possible.
@@ -1776,7 +1810,7 @@ Column name or column count matching is not considered.
 
 The returned table does not include the footer."
   (when tables
-    (tblfn-add-header-row
+    (tblfn-prepend-header
      (let ((result-rows nil)
            (rest-tables tables))
        (while (cdr rest-tables)
@@ -1784,11 +1818,11 @@ The returned table does not include the footer."
                                   ;; Copy
                                   (tblfn-body (pop rest-tables) t))))
        (nconc result-rows (tblfn-body (car rest-tables))))
-     (tblfn-column-names (car tables))
      (car tables))))
 ;; TEST: (tblfn-append-body-rows) => nil
 ;; TEST: (tblfn-append-body-rows '(("A" "B" "C"))) => (("A" "B" "C"))
 ;; TEST: (tblfn-append-body-rows '(("A" "B" "C") hline (1 2 3) (4 5 6)) '(("A" "B" "C") hline (7 8 9) (10 11 12) hline (100 101 102))) => (("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) (10 11 12))
+;; TEST: (tblfn-append-body-rows '(("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) (4 5 6)) '(("A" "B" "C") ("-4" "-5" "-6") hline (7 8 9) (10 11 12) hline (100 101 102))) => (("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) (4 5 6) (7 8 9) (10 11 12))
 
 (defalias 'tblfn-union-all 'tblfn-append-body-rows)
 
@@ -1837,14 +1871,13 @@ The returned table does not include the footer."
     (setq source-end (tblfn-normalize-index
                       source-nrows source-end t nil))
 
-    (tblfn-add-header-row
+    (tblfn-prepend-header
      (if (< source-start source-end)
          (nconc
           (seq-take target-body target-start)
           (seq-subseq source-body source-start source-end)
           (nthcdr target-start target-body))
        target-body)
-     (tblfn-column-names target-table)
      target-table)))
 ;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14))) => ((0) (1) (2) (3) (4) (5) (6) (11) (12) (13) (14))
 ;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) -1 '((10) (11) (12) (13) (14))) => ((0) (1) (2) (3) (4) (5) (11) (12) (13) (14) (6))
@@ -1857,6 +1890,7 @@ The returned table does not include the footer."
 ;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) 1 -1) => ((0) (1) (2) (3) (4) (5) (6) (12) (13))
 ;; TEST: (tblfn-insert-body-rows-at '((0) (1) (2) (3) (4) (5) (6)) nil '((10) (11) (12) (13) (14)) -1 1) => ((0) (1) (2) (3) (4) (5) (6))
 ;; TEST: (tblfn-insert-body-rows-at '((0) hline (1) (2) (3) (4) (5) (6) hline (7) (8)) 1 '((10) hline (11) (12) (13) (14) (15) hline (16)) 1 -1) => ((0) hline (1) (12) (13) (14) (2) (3) (4) (5) (6))
+;; TEST: (tblfn-insert-body-rows-at '((0) (-1) hline (1) (2) (3) (4) (5) (6) hline (7) (8)) 1 '((10) hline (11) (12) (13) (14) (15) hline (16)) 1 -1) => ((0) (-1) hline (1) (12) (13) (14) (2) (3) (4) (5) (6))
 
 (defun tblfn-insert-rows-at (target-table target-start source-table
                                           &optional source-start source-end)
@@ -1983,16 +2017,14 @@ tables. The resulting table uses TARGET-TABLE's column names."
                     ;; Not matched
                     (nconc target-body (list source-row))))))
 
-      (tblfn-add-header-row
-       target-body
-       (tblfn-column-names target-table)
-       target-table))))
+      (tblfn-prepend-header target-body target-table))))
 ;; TEST: (tblfn-merge '(("Product" "Price") hline ("Apple" 300) ("Banana" 200) ("Orange" 100) ("Strawberry" 400)) '(("Product" "New Price") hline ("Orange" 250) ("Apple" 500) ("Strawberry" "1000") ("Melon" 2000)) "Product") => (("Product" "Price") hline ("Apple" 500) ("Banana" 200) ("Orange" 250) ("Strawberry" "1000") ("Melon" 2000))
 ;; TEST: (tblfn-merge '(("Product" "Price") hline ("Apple" 300) ("Banana" 200) ("Orange" 100) ("Strawberry" 400)) '(("Product" "New Price") hline ("Mango" 750) ("Orange" 250) ("Melon" 2000) ("Apple" 500) ("Strawberry" "1000") ("Melon" 3000)) "Product") => (("Product" "Price") hline ("Apple" 500) ("Banana" 200) ("Orange" 250) ("Strawberry" "1000") ("Mango" 750) ("Melon" 3000))
 ;; TEST: (tblfn-merge '(("Product" "Price") hline ("Apple" 300) ("Banana" 200) ("Orange" 100) ("Apple" 100) ("Strawberry" 400)) '(("Product" "New Price") hline ("Orange" 250) ("Apple" 500) ("Strawberry" "1000") ("Melon" 2000) ("Orange" 800)) "Product") => (("Product" "Price") hline ("Apple" 500) ("Banana" 200) ("Orange" 800) ("Apple" 500) ("Strawberry" "1000") ("Melon" 2000))
 ;; TEST: (tblfn-merge nil '(("Product" "New Price") hline ("Orange" 250) ("Apple" 500) ("Strawberry" "1000") ("Melon" 2000) ("Orange" 800)) "Product") => nil
 ;; TEST: (tblfn-merge '(("Product" "Price") hline ("Apple" 300) ("Banana" 200) ("Orange" 100) ("Apple" 100) ("Strawberry" 400)) nil "Product") => error
 ;; TEST: (tblfn-merge '(("Product" "Price") hline ("Apple" 300) ("Banana" 200) ("Orange" 100) ("Apple" 100) ("Strawberry" 400)) '(("Product" "Price")) "Product") => (("Product" "Price") hline ("Apple" 300) ("Banana" 200) ("Orange" 100) ("Apple" 100) ("Strawberry" 400))
+;; TEST: (tblfn-merge '(("Product" "Price") ("-1" "-2") hline ("Apple" 300) ("Banana" 200) ("Orange" 100) ("Strawberry" 400)) '(("Product" "New Price") ("-3" "-4") hline ("Orange" 250) ("Apple" 500) ("Strawberry" "1000") ("Melon" 2000)) "Product") => (("Product" "Price") ("-1" "-2") hline ("Apple" 500) ("Banana" 200) ("Orange" 250) ("Strawberry" "1000") ("Melon" 2000))
 
 (defun tblfn-join (left-table right-table left-colspec &rest rest-args)
   "Return a new table with matching rows from RIGHT-TABLE joined to each
@@ -2064,6 +2096,7 @@ The returned table does not include the footer.
                               (length right-colnames)
                             (1- (length right-colnames)))
                           padding-value)))
+       ;; TODO: 2行以上のヘッダーの連結をする
        (append left-colnames
                (if keep-right-key-col
                    right-colnames
@@ -2103,6 +2136,7 @@ The returned table does not include the footer."
               nconc
               (cl-loop for right-row in right-body
                        collect (append left-row-padded right-row)))
+     ;; TODO: 2行以上のヘッダーの連結をする
      (append left-colnames right-colnames)
      left-table)))
 ;; TEST: (tblfn-cross-join '(("Name" "Price") ("Apple" "150") ("Banana" "80") ("Orange") ("Strawberry" "400")) '(("Name" "Price") ("Chocolate" "10") ("Cake" "20") ("Pudding" "30"))) => (("Name" "Price" "Name" "Price") ("Apple" "150" "Chocolate" "10") ("Apple" "150" "Cake" "20") ("Apple" "150" "Pudding" "30") ("Banana" "80" "Chocolate" "10") ("Banana" "80" "Cake" "20") ("Banana" "80" "Pudding" "30") ("Orange" "" "Chocolate" "10") ("Orange" "" "Cake" "20") ("Orange" "" "Pudding" "30") ("Strawberry" "400" "Chocolate" "10") ("Strawberry" "400" "Cake" "20") ("Strawberry" "400" "Pudding" "30"))
@@ -2125,12 +2159,11 @@ This function can be used to implement set operations on tables:
   (tblfn-reduce table1 \\='seq-union table2 table3)
   (tblfn-reduce table1 \\='seq-intersection table2 table3)
   (tblfn-reduce table1 \\='seq-difference table2 table3)"
-  (tblfn-add-header-row
+  (tblfn-prepend-header
    (seq-reduce (lambda (rows table2)
                  (funcall function rows (tblfn-body table2)))
                rest-tables
                (tblfn-body initial-table))
-   (tblfn-column-names initial-table)
    initial-table))
 
 (defun tblfn-union (&rest tables)
@@ -2146,6 +2179,7 @@ The returned table does not include the footer."
 ;; TEST: (tblfn-union) => nil
 ;; TEST: (tblfn-union '(("A" "B" "C"))) => (("A" "B" "C"))
 ;; TEST: (tblfn-union '(("A" "B" "C") hline (1 2 3) hline (101 102 103)) '(("A" "B" "C") hline (4 5 6) (7 8 9) hline (201 202 203)) '(hline (10 11 12) (13 14 15) hline (301 302 303))) => (("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) (10 11 12) (13 14 15))
+;; TEST: (tblfn-union '(("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) hline (101 102 103)) '(("A" "B" "C") hline (4 5 6) (7 8 9) hline (201 202 203)) '(hline (10 11 12) (13 14 15) hline (301 302 303))) => (("A" "B" "C") ("-1" "-2" "-3") hline (1 2 3) (4 5 6) (7 8 9) (10 11 12) (13 14 15))
 
 (defun tblfn-intersection (&rest tables)
   "Return a table containing the intersection of all rows in the bodies of

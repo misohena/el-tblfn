@@ -1,9 +1,6 @@
 #+TITLE: Simple Data Table Functions for Emacs TODO List
 
 * Inbox
-** TODO ヘッダーに列名以外がある時を考慮するかどうか
-今は多くの関数でtblfn-add-header-rowの第二引数に(tblfn-column-names table)を引き渡している。しかし本来は元のテーブルのヘッダー行を丸丸復元すべきではないか。つまりhlineが使われている場合でかつその前に複数行ある場合はそれを全て復元すべきでは無いか。
-
 ** TODO calc-evalで実行する式に「引数」を渡す方法を調べる
 ** TODO 日付に対応する
 ** TODO tblfn-add-sum-column
@@ -65,3 +62,9 @@ tblfn-numberize
 CLOSED: [2026-01-10 Sat 17:58]
 本来であればリストに限定すべき。
 しかしTEST:の多くの部分で非リストの行を使っているのでそれを全て直さなければならない。
+** DONE ヘッダーに列名以外(複数行)がある時を考慮する
+CLOSED: [2026-01-10 Sat 20:22]
+今は多くの関数でtblfn-add-header-rowの第二引数に(tblfn-column-names table)を引き渡している。しかし本来は元のテーブルのヘッダー行を丸丸復元すべきではないか。つまりhlineが使われている場合でかつその前に複数行ある場合はそれを全て復元すべきでは無いか。
+
+- tblfn-header関数を追加し、hlineを含むヘッダー部分を返す。必ず新しいリストで。
+- tblfn-prepend-header関数を追加し、(nconc (tblfn-header table) body)をする。
