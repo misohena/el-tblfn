@@ -458,7 +458,7 @@ COLUMN-NAMES is a list of column names."
 
 (cl-defun tblfn-insert-column (table dst-colspec new-column-name
                                      column-initializer-spec
-                                     &key (padding-value "")
+                                     &key (padding "")
                                      header footer)
   "Return a table with a new column inserted.
 
@@ -493,8 +493,8 @@ FOOTER is the initial value used in footer rows.  If nil, the value of
 COLUMN-INITIALIZER-SPEC is used when it is a string or integer, and an
 empty string is used when it is an S-expression or function.
 
-PADDING-VALUE is the value used to fill in missing fields when a row
-has fewer fields than expected."
+PADDING is the value used to fill in missing fields when a row has fewer
+fields than expected."
   (let* ((ncols (tblfn-column-count table))
          (dst-col-index (if (null dst-colspec)
                             ncols
@@ -524,7 +524,7 @@ has fewer fields than expected."
                          (setq name-set t)
                          new-column-name)
                      (or header initial-value))
-                   padding-value)
+                   padding)
                 row)))
         (push new-row result)))
 
@@ -539,7 +539,7 @@ has fewer fields than expected."
                          row dst-col-index
                          ;;initial-value
                          (funcall initializer row)
-                         padding-value)
+                         padding)
                       row)))
                (push new-row result)))))
 
@@ -551,13 +551,13 @@ has fewer fields than expected."
                   (tblfn-insert-element-at
                    row dst-col-index
                    (or footer initial-value)
-                   padding-value)
+                   padding)
                 row)))
         (push new-row result)))
 
     (nreverse result)))
 ;; TEST: (tblfn-insert-column '(("A" "B" "C") hline (1 2 3) (4 5 6) nil (7)) 2 "X" "-") => (("A" "B" "X" "C") hline (1 2 "-" 3) (4 5 "-" 6) ("" "" "-") (7 "" "-"))
-;; TEST: (tblfn-insert-column '(("A" "B" "C") hline (1 2 3) (4 5 6) nil (7)) 2 "X" "-" :padding-value -1) => (("A" "B" "X" "C") hline (1 2 "-" 3) (4 5 "-" 6) (-1 -1 "-") (7 -1 "-"))
+;; TEST: (tblfn-insert-column '(("A" "B" "C") hline (1 2 3) (4 5 6) nil (7)) 2 "X" "-" :padding -1) => (("A" "B" "X" "C") hline (1 2 "-" 3) (4 5 "-" 6) (-1 -1 "-") (7 -1 "-"))
 ;; TEST: (tblfn-insert-column '(("" "A" "B" "C") ("!" "a" "b" "c") hline ("" 1 2 3) ("" 4 5 6) ("" 7 8 9) hline ("f1" "f2")) nil "X" '(+ A B C)) => (("" "A" "B" "C" "X") ("!" "a" "b" "c" "") hline ("" 1 2 3 6) ("" 4 5 6 15) ("" 7 8 9 24) hline ("f1" "f2" "" "" ""))
 
 (defun tblfn-make-column-initializer (table column-initializer-spec)
@@ -577,7 +577,7 @@ has fewer fields than expected."
        (lambda (_row) value)))))
 
 (cl-defun tblfn-add-column (table new-column-name column-initializer-spec
-                                  &key (padding-value "")
+                                  &key (padding "")
                                   header footer)
   "Return a table with a new column added to the end.
 
@@ -585,7 +585,7 @@ This function calls `tblfn-insert-column' with DST-COLSPEC set to nil.
 
 See `tblfn-insert-column' for the meaning of each argument."
   (tblfn-insert-column table nil new-column-name column-initializer-spec
-                       :padding-value padding-value
+                       :padding padding
                        :header header
                        :footer footer))
 
@@ -602,20 +602,20 @@ The resulting table has all columns from all input tables concatenated
 left to right.  The column names are also concatenated in the same order.
 
 If tables have different numbers of rows, shorter tables are padded with
-empty strings (or the value specified by :padding-value) to match the
-longest table.
+empty strings (or the value specified by :padding) to match the longest
+table.
 
 If a row in a table has fewer fields than the table's column count, it
 is padded with the padding value.  If a row has more fields, only the
 first fields up to the column count are used.
 
 Keyword arguments:
-  :padding-value VALUE  Value used for padding (default: \"\")
+  :padding VALUE  Value used for padding (default: \"\")
 
 Example:
-  (tblfn-append-columns table1 table2 :padding-value 0)
-\n(fn &rest TABLES &key (PADDING-VALUE \"\"))"
-  (tblfn--let-args (&rest tables &key (padding-value "")) tables-and-options
+  (tblfn-append-columns table1 table2 :padding 0)
+\n(fn &rest TABLES &key (PADDING \"\"))"
+  (tblfn--let-args (&rest tables &key (padding "")) tables-and-options
     (when tables
       (tblfn-add-header-row
        (let ((colcount-list (mapcar #'tblfn-column-count tables))
@@ -626,7 +626,7 @@ Example:
                   for colcount in colcount-list
                   for body in body-list
                   for row = (car body)
-                  nconc (tblfn-take-padded row colcount padding-value))
+                  nconc (tblfn-take-padded row colcount padding))
                  result)
            (cl-loop for cons-cell on body-list
                     do (setcar cons-cell (cdr (car cons-cell)))))
@@ -637,7 +637,7 @@ Example:
 ;; TEST: (tblfn-append-columns) => nil
 ;; TEST: (tblfn-append-columns '(("A" "B") hline (1 2) (10 11) (12 13) hline (-1 -2))) => (("A" "B") hline (1 2) (10 11) (12 13))
 ;; TEST: (tblfn-append-columns '(("A" "B") hline (0 1) (10 11 12 13) (20 21) hline (-1 -2)) '(("C" "D" "E") (2 3) (12 13 14) nil) '(("F" "G" "H") nil (15 16 17) (25) (35 36 37))) => (("A" "B" "C" "D" "E" "F" "G" "H") hline (0 1 2 3 "" "" "" "") (10 11 12 13 14 15 16 17) (20 21 "" "" "" 25 "" "") ("" "" "" "" "" 35 36 37))
-;; TEST: (tblfn-append-columns '(("A" "B") hline (0 1) (10 11 12 13) (20 21)) '(("C" "D" "E") (2 3) (12 13 14) nil) :padding-value -1) => (("A" "B" "C" "D" "E") hline (0 1 2 3 -1) (10 11 12 13 14) (20 21 -1 -1 -1))
+;; TEST: (tblfn-append-columns '(("A" "B") hline (0 1) (10 11 12 13) (20 21)) '(("C" "D" "E") (2 3) (12 13 14) nil) :padding -1) => (("A" "B" "C" "D" "E") hline (0 1 2 3 -1) (10 11 12 13 14) (20 21 -1 -1 -1))
 
 (defun tblfn-remove-columns (table &rest colspecs)
   "Return a new table with the columns specified by COLSPECS removed.
@@ -2126,7 +2126,7 @@ RIGHT-TABLE are equal.
 
 Rows from LEFT-TABLE that have no matching row in RIGHT-TABLE are
 removed by default.
-However, if INCLUDE-MISMATCH is non-nil, columns with PADDING-VALUE are
+However, if INCLUDE-MISMATCH is non-nil, columns with PADDING are
 concatenated.
 
 By default, the column specified by RIGHT-COLSPEC is removed, but if
@@ -2140,10 +2140,10 @@ matches each row of LEFT-TABLE.
 
 The returned table does not include the footer.
 \n(fn LEFT-TABLE RIGHT-TABLE LEFT-COLSPEC &optional RIGHT-COLSPEC \
-&key INCLUDE-MISMATCH KEEP-RIGHT-KEY-COL (PADDING-VALUE \"\") RIGHT-SINGLE-ROW)"
+&key INCLUDE-MISMATCH KEEP-RIGHT-KEY-COL (PADDING \"\") RIGHT-SINGLE-ROW)"
   (tblfn--let-args (right-colspec
                     &key include-mismatch keep-right-key-col
-                    (padding-value "") right-single-row)
+                    (padding "") right-single-row)
       rest-args
     (let* ((left-colnames (tblfn-column-names left-table))
            (right-colnames (tblfn-column-names right-table))
@@ -2156,7 +2156,7 @@ The returned table does not include the footer.
       (tblfn-add-header-row
        (cl-loop for left-row in left-body
                 for left-row-padded = (tblfn-take-padded left-row left-colcount
-                                                         padding-value)
+                                                         padding)
                 for key = (nth left-key-col left-row)
                 for pred = (lambda (row) (equal (nth right-key-col row) key))
                 for right-rows
@@ -2181,7 +2181,7 @@ The returned table does not include the footer.
                           (if keep-right-key-col
                               (length right-colnames)
                             (1- (length right-colnames)))
-                          padding-value)))
+                          padding)))
        ;; TODO: 2行以上のヘッダーの連結をする
        (append left-colnames
                (if keep-right-key-col
@@ -2191,20 +2191,20 @@ The returned table does not include the footer.
 ;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4)) '((a c) (1 10) (3 30)) 'a)) => ((a b c) hline (1 2 10) (3 4 30))
 ;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3) (5 6)) '((a c) (1 10) (3 30)) 'a)) => ((a b c) hline (1 2 10) (3 "" 30))
 ;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (3 30)) 'a)) => ((a b c) hline (1 2 10) (3 4 30))
-;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1) (3 4) (5 6)) '((a c) (1 10) (3 30) (1 11) (6 20)) 'a :padding-value -1)) => ((a b c) hline (1 -1 10) (1 -1 11) (3 4 30))
-;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (3 30)) 'a :include-mismatch t :keep-right-key-col nil :padding-value -1 t)) => ((a b c) hline (1 2 10) (3 4 30) (5 6 -1))
-;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding-value  -1 t)) => ((a b a c) hline (1 2 1 10) (3 4 3 30) (5 6 -1 -1))
-;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (1 11) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding-value -1 :right-single-row t)) => ((a b a c) hline (1 2 1 10) (3 4 3 30) (5 6 -1 -1))
-;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (1 11) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding-value -1)) => ((a b a c) hline (1 2 1 10) (1 2 1 11) (3 4 3 30) (5 6 -1 -1))
+;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1) (3 4) (5 6)) '((a c) (1 10) (3 30) (1 11) (6 20)) 'a :padding -1)) => ((a b c) hline (1 -1 10) (1 -1 11) (3 4 30))
+;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (3 30)) 'a :include-mismatch t :keep-right-key-col nil :padding -1 t)) => ((a b c) hline (1 2 10) (3 4 30) (5 6 -1))
+;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding  -1 t)) => ((a b a c) hline (1 2 1 10) (3 4 3 30) (5 6 -1 -1))
+;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (1 11) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding -1 :right-single-row t)) => ((a b a c) hline (1 2 1 10) (3 4 3 30) (5 6 -1 -1))
+;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (1 11) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding -1)) => ((a b a c) hline (1 2 1 10) (1 2 1 11) (3 4 3 30) (5 6 -1 -1))
 
-(cl-defun tblfn-cross-join (left-table right-table &key (padding-value ""))
+(cl-defun tblfn-cross-join (left-table right-table &key (padding ""))
   "Return a new table containing the Cartesian product of LEFT-TABLE and
 RIGHT-TABLE.
 
 Each row in LEFT-TABLE is combined with every row in RIGHT-TABLE.
 
 If a row in LEFT-TABLE has fewer fields than its column count, it is
-padded with PADDING-VALUE (default: \"\").
+padded with PADDING (default: \"\").
 
 The resulting table has all columns from LEFT-TABLE followed by all
 columns from RIGHT-TABLE.
@@ -2218,7 +2218,7 @@ The returned table does not include the footer."
     (tblfn-add-header-row
      (cl-loop for left-row in left-body
               for left-row-padded = (tblfn-take-padded left-row left-colcount
-                                                       padding-value)
+                                                       padding)
               nconc
               (cl-loop for right-row in right-body
                        collect (append left-row-padded right-row)))
@@ -2309,12 +2309,12 @@ The returned table does not include the footer."
                                  (exclude-header nil)
                                  (exclude-footer nil)
                                  (column-names 'number)
-                                 (padding-value ""))
+                                 (padding ""))
   "Transpose TABLE (swap rows and columns).
 
 EXCLUDE-HEADER: If non-nil, exclude the header row from transposition.
 EXCLUDE-FOOTER: If non-nil, exclude the footer rows from transposition.
-PADDING-VALUE: Value used to pad short rows (default: \"\").
+PADDING: Value used to pad short rows (default: \"\").
 
 COLUMN-NAMES determines the column names of the transposed table:
   \\='number (default) - Sequential numbers: \"0\", \"1\", \"2\", ...
@@ -2345,7 +2345,7 @@ Examples:
       (let ((row (pop rest)))
         (when (tblfn-data-row-p row)
           (cl-loop for result-rows on result
-                   for field = (if row (pop row) padding-value)
+                   for field = (if row (pop row) padding)
                    do (push field (car result-rows))))))
     (cl-loop for result-rows on result
              do (setcar result-rows (nreverse (car result-rows))))
@@ -2360,9 +2360,9 @@ Examples:
              table)))
 
     result))
-;; TEST: (tblfn-transpose '(("A" "B" "C" "D") hline (1 2) (11 12 13 14 15) (21 22 23 24) () (41) (42 43 44 45) hline (101 102 103 104)) :padding-value 0 :column-names 'number) => (("0" "1" "2" "3" "4" "5" "6" "7") hline ("A" 1 11 21 0 41 42 101) ("B" 2 12 22 0 0 43 102) ("C" 0 13 23 0 0 44 103) ("D" 0 14 24 0 0 45 104))
-;; TEST: (tblfn-transpose '(("Name" "A" "B" "C" "D") hline ("a" 1 2) ("b" 11 12 13 14 15) ("c" 21 22 23 24) () ("e" 41) ("f" 42 43 44 45) hline ("g" 101 102 103 104)) :exclude-header t :padding-value 0 :column-names 'first-column) => (("a" "b" "c" 0 "e" "f" "g") hline (1 11 21 0 41 42 101) (2 12 22 0 0 43 102) (0 13 23 0 0 44 103) (0 14 24 0 0 45 104))
-;; TEST: (tblfn-transpose '(("Name" "A" "B" "C" "D") hline ("a" 1 2) ("b" 11 12 13 14 15) ("c" 21 22 23 24) () ("e" 41) ("f" 42 43 44 45) hline ("g" 101 102 103 104)) :exclude-header t :exclude-footer t :padding-value 0 :column-names 'first-column) => (("a" "b" "c" 0 "e" "f") hline (1 11 21 0 41 42) (2 12 22 0 0 43) (0 13 23 0 0 44) (0 14 24 0 0 45))
+;; TEST: (tblfn-transpose '(("A" "B" "C" "D") hline (1 2) (11 12 13 14 15) (21 22 23 24) () (41) (42 43 44 45) hline (101 102 103 104)) :padding 0 :column-names 'number) => (("0" "1" "2" "3" "4" "5" "6" "7") hline ("A" 1 11 21 0 41 42 101) ("B" 2 12 22 0 0 43 102) ("C" 0 13 23 0 0 44 103) ("D" 0 14 24 0 0 45 104))
+;; TEST: (tblfn-transpose '(("Name" "A" "B" "C" "D") hline ("a" 1 2) ("b" 11 12 13 14 15) ("c" 21 22 23 24) () ("e" 41) ("f" 42 43 44 45) hline ("g" 101 102 103 104)) :exclude-header t :padding 0 :column-names 'first-column) => (("a" "b" "c" 0 "e" "f" "g") hline (1 11 21 0 41 42 101) (2 12 22 0 0 43 102) (0 13 23 0 0 44 103) (0 14 24 0 0 45 104))
+;; TEST: (tblfn-transpose '(("Name" "A" "B" "C" "D") hline ("a" 1 2) ("b" 11 12 13 14 15) ("c" 21 22 23 24) () ("e" 41) ("f" 42 43 44 45) hline ("g" 101 102 103 104)) :exclude-header t :exclude-footer t :padding 0 :column-names 'first-column) => (("a" "b" "c" 0 "e" "f") hline (1 11 21 0 41 42) (2 12 22 0 0 43) (0 13 23 0 0 44) (0 14 24 0 0 45))
 
 (defun tblfn-transpose--generate-column-names (result-table column-names)
   "See `tblfn-transpose'."
@@ -2955,13 +2955,13 @@ a single empty string."
 ;;;; List Utilities
 
 
-(defun tblfn-take-padded (list count &optional padding-value)
-  "Take COUNT elements from LIST, padding with PADDING-VALUE if needed."
+(defun tblfn-take-padded (list count &optional padding)
+  "Take COUNT elements from LIST, padding with PADDING if needed."
   (cl-loop repeat count
            if list
            collect (pop list)
            else
-           collect padding-value))
+           collect padding))
 ;; TEST: (tblfn-take-padded '(1 2 3) -1) => nil
 ;; TEST: (tblfn-take-padded '(1 2 3) 0) => nil
 ;; TEST: (tblfn-take-padded '(1 2 3) 3) => (1 2 3)
@@ -2979,10 +2979,10 @@ This function always returns a new list (even if CONS-CELL is nil)."
 ;; TEST: (let ((lst '(1 2 3 4))) (tblfn-take-until-cons-cell lst (nthcdr 2 lst))) => (1 2)
 ;; TEST: (let ((lst '(1 2 3 4))) (eq (tblfn-take-until-cons-cell lst nil) lst)) => nil
 
-(defun tblfn-insert-element-at (list index new-value &optional padding-value)
+(defun tblfn-insert-element-at (list index new-value &optional padding)
   "Return a new list with NEW-VALUE inserted into LIST at position INDEX.
 If LIST is shorter than INDEX, the missing elements are filled with
-PADDING-VALUE.
+PADDING.
 The portion of LIST after the insertion point is shared with the
 returned list."
   (nconc
@@ -2990,7 +2990,7 @@ returned list."
             if list
             collect (pop list)
             else
-            collect padding-value)
+            collect padding)
    (list new-value)
    list))
 
