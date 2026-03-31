@@ -456,8 +456,10 @@ COLUMN-NAMES is a list of column names."
 
 ;;;;; Column Structure
 
-(cl-defun tblfn-insert-column (table dst-colspec new-column-name initial-value
-                                     &key (padding-value ""))
+(cl-defun tblfn-insert-column (table dst-colspec new-column-name
+                                     column-initializer-spec
+                                     &key (padding-value "")
+                                     header footer)
   "Return a table with a new column inserted.
 
 After insertion, the new column will be at the position specified by
@@ -467,45 +469,125 @@ appended as the last column.
 
 NEW-COLUMN-NAME is the name of the new column.
 
-INITIAL-VALUE is the initial value for the new column in all rows."
+COLUMN-INITIALIZER-SPEC specifies the initial value for the new column,
+and must be one of the following:
+
+1. A string or integer.
+
+2. A single S-expression that can reference column names, `row-index',
+   and `row' and returns a initial value.
+
+3. A single function that takes a row and returns a initial value.
+   Within the function, the current row index is available via the
+   `tblfn-current-row-index' variable.
+
+Note that S-expressions and functions are only applied to rows in the
+table body.  For header and footer rows, the value specified by HEADER
+or FOOTER is used instead.
+
+HEADER is the initial value used in header rows.  If nil, the value of
+COLUMN-INITIALIZER-SPEC is used when it is a string or integer, and an
+empty string is used when it is an S-expression or function.
+
+FOOTER is the initial value used in footer rows.  If nil, the value of
+COLUMN-INITIALIZER-SPEC is used when it is a string or integer, and an
+empty string is used when it is an S-expression or function.
+
+PADDING-VALUE is the value used to fill in missing fields when a row
+has fewer fields than expected."
   (let* ((ncols (tblfn-column-count table))
          (dst-col-index (if (null dst-colspec)
                             ncols
+                          ;; TODO: Accept dst-col-index == ncols?
                           (tblfn-column-index table dst-colspec)))
-         (name-set nil))
-    ;; TODO: Signal error if dst-col-index < 0 ?
-    ;; TODO: Signal error if dst-col-index > ncols ?
-    (mapcar
-     (lambda (row)
-       (if (listp row)
-           (let ((rest-cols row))
-             (nconc
-              (cl-loop repeat dst-col-index
-                       if rest-cols
-                       collect (pop rest-cols)
-                       else
-                       collect padding-value)
-              (list
-               ;; TODO: Add header-initial-value?
-               ;; TODO: Add footer-initial-value?
-               (if (and (not name-set) (tblfn-data-row-p row))
-                   (progn
-                     (setq name-set t)
-                     new-column-name)
-                 initial-value))
-              rest-cols))
-         row))
-     table)))
+         (name-set nil)
+         (table-wo-header (tblfn-after-header table))
+         result
+         (initial-value (if (or (functionp column-initializer-spec)
+                                (consp column-initializer-spec))
+                            ""
+                          ;; string or integer
+                          column-initializer-spec))
+         (initializer (tblfn-make-column-initializer
+                       table column-initializer-spec)))
+
+
+    ;; Header
+    (while (not (eq table table-wo-header))
+      (let* ((row (pop table))
+             (new-row
+              (if (listp row)
+                  (tblfn-insert-element-at
+                   row dst-col-index
+                   (if (and (not name-set) (tblfn-data-row-p row))
+                       (progn
+                         (setq name-set t)
+                         new-column-name)
+                     (or header initial-value))
+                   padding-value)
+                row)))
+        (push new-row result)))
+
+    ;; Body
+    (setq table
+          (tblfn-mapc-body-row--after-header
+           table ;; Same as TABLE-WO-HEADER
+           (lambda (row)
+             (let ((new-row
+                    (if (listp row)
+                        (tblfn-insert-element-at
+                         row dst-col-index
+                         ;;initial-value
+                         (funcall initializer row)
+                         padding-value)
+                      row)))
+               (push new-row result)))))
+
+    ;; Footer
+    (while table
+      (let* ((row (pop table))
+             (new-row
+              (if (listp row)
+                  (tblfn-insert-element-at
+                   row dst-col-index
+                   (or footer initial-value)
+                   padding-value)
+                row)))
+        (push new-row result)))
+
+    (nreverse result)))
 ;; TEST: (tblfn-insert-column '(("A" "B" "C") hline (1 2 3) (4 5 6) nil (7)) 2 "X" "-") => (("A" "B" "X" "C") hline (1 2 "-" 3) (4 5 "-" 6) ("" "" "-") (7 "" "-"))
 ;; TEST: (tblfn-insert-column '(("A" "B" "C") hline (1 2 3) (4 5 6) nil (7)) 2 "X" "-" :padding-value -1) => (("A" "B" "X" "C") hline (1 2 "-" 3) (4 5 "-" 6) (-1 -1 "-") (7 -1 "-"))
+;; TEST: (tblfn-insert-column '(("" "A" "B" "C") ("!" "a" "b" "c") hline ("" 1 2 3) ("" 4 5 6) ("" 7 8 9) hline ("f1" "f2")) nil "X" '(+ A B C)) => (("" "A" "B" "C" "X") ("!" "a" "b" "c" "") hline ("" 1 2 3 6) ("" 4 5 6 15) ("" 7 8 9 24) hline ("f1" "f2" "" "" ""))
 
-(defun tblfn-add-column (table new-column-name initial-value)
+(defun tblfn-make-column-initializer (table column-initializer-spec)
+  (pcase column-initializer-spec
+    ;; FUNCTION(ROW)
+    ((and (pred functionp) fun)
+     fun)
+    ;; SEXP
+    ((and (pred consp) sexp)
+     `(lambda (row)
+        (setq row (copy-sequence row))
+        ,(tblfn--expand-column-references-in-sexp
+          sexp (tblfn-column-names table) 'row)))
+    ;; STRING or INTEGER
+    (_
+     (let ((value column-initializer-spec))
+       (lambda (_row) value)))))
+
+(cl-defun tblfn-add-column (table new-column-name column-initializer-spec
+                                  &key (padding-value "")
+                                  header footer)
   "Return a table with a new column added to the end.
 
-NEW-COLUMN-NAME is the name of the new column.
+This function calls `tblfn-insert-column' with DST-COLSPEC set to nil.
 
-INITIAL-VALUE is the initial value for the new column in all rows."
-  (tblfn-insert-column table nil new-column-name initial-value))
+See `tblfn-insert-column' for the meaning of each argument."
+  (tblfn-insert-column table nil new-column-name column-initializer-spec
+                       :padding-value padding-value
+                       :header header
+                       :footer footer))
 
 (defun tblfn-append-columns (&rest tables-and-options)
   "Return a table with columns from TABLES concatenated horizontally.
@@ -881,6 +963,10 @@ Headers, footers, hlines, special rows to be ignored for org-mode, and
 other non-list elements are ignored, and only data rows in the body are
 passed to FUNCTION."
   (when-let* ((table-wo-header (tblfn-after-header table)))
+    (tblfn-mapc-body-row--after-header table-wo-header function)))
+
+(defun tblfn-mapc-body-row--after-header (table-wo-header function)
+  (when table-wo-header
     (let ((rest table-wo-header)
           (last-hline-cons-cell nil)
           (processed table-wo-header)
@@ -2892,6 +2978,21 @@ This function always returns a new list (even if CONS-CELL is nil)."
 ;; TEST: (tblfn-take-until-cons-cell '(1 2 3) nil) => (1 2 3)
 ;; TEST: (let ((lst '(1 2 3 4))) (tblfn-take-until-cons-cell lst (nthcdr 2 lst))) => (1 2)
 ;; TEST: (let ((lst '(1 2 3 4))) (eq (tblfn-take-until-cons-cell lst nil) lst)) => nil
+
+(defun tblfn-insert-element-at (list index new-value &optional padding-value)
+  "Return a new list with NEW-VALUE inserted into LIST at position INDEX.
+If LIST is shorter than INDEX, the missing elements are filled with
+PADDING-VALUE.
+The portion of LIST after the insertion point is shared with the
+returned list."
+  (nconc
+   (cl-loop repeat index
+            if list
+            collect (pop list)
+            else
+            collect padding-value)
+   (list new-value)
+   list))
 
 (defun tblfn-count-between (start end)
   "Return the number of cons cells between START and END (END not included).

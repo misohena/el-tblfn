@@ -1,6 +1,7 @@
 #+TITLE: Simple Data Table Functions for Emacs TODO List
 
 * Inbox
+** TODO :padding-value引数は:paddingに変更すべき
 ** TODO calc-evalで実行する式に「引数」を渡す方法を調べる
 ** TODO 日付に対応する
 ** TODO tblfn-add-sum-column
@@ -68,3 +69,6 @@ CLOSED: [2026-01-10 Sat 20:22]
 
 - tblfn-header関数を追加し、hlineを含むヘッダー部分を返す。必ず新しいリストで。
 - tblfn-prepend-header関数を追加し、(nconc (tblfn-header table) body)をする。
+** DONE tblfn-insert-columnとtblfn-add-columnの初期値に式を書けるようにする
+CLOSED: [2026-03-31 Tue 20:40]
+initial-valueをcolumn-initializer-specに変更し、文字列と整数の他、S式や関数を書けるようにする。関数は行を引数に取ってフィールド値を一つ返す。
