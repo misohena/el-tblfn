@@ -216,8 +216,8 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - tblfn-insert-hline
   - tblfn-add-hline
 - Row Types
-  - tblfn-non-data-row-p
   - tblfn-data-row-p
+  - tblfn-non-data-row-p
 - Columns
   - Column Metadata
     - tblfn-column-count
@@ -229,6 +229,7 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
     - tblfn--expand-column-references-in-sexp
   - Column Structure
     - tblfn-insert-column
+    - tblfn-make-column-initializer
     - tblfn-add-column
     - tblfn-append-columns
     - tblfn-remove-columns
@@ -244,15 +245,18 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - tblfn-set-field-at
 - Sections
   - Header
+    - tblfn-header
     - tblfn-after-header
     - tblfn-insert-header-hline
     - tblfn-add-header-row
+    - tblfn-prepend-header
   - Footer
     - tblfn-footer-hline-and-after
     - tblfn-remove-footer
     - tblfn-remove-last-row
   - Body
     - tblfn-mapc-body-row
+    - tblfn-mapc-body-row--after-header
     - tblfn-map-body-row
     - tblfn-body-row-count
     - tblfn-body-row-index-to-table-row-index
@@ -305,6 +309,7 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
   - Table Joins
     - tblfn-merge
     - tblfn-join
+    - tblfn-join--find-right-rows
     - tblfn-cross-join
   - Set Operations
     - tblfn-reduce
@@ -346,6 +351,7 @@ CSVファイルは構成がまちまちなので、事前の整形に ~tblfn-sli
 - List Utilities
   - tblfn-take-padded
   - tblfn-take-until-cons-cell
+  - tblfn-insert-element-at
   - tblfn-count-between
   - tblfn-find-element-and-after
   - tblfn-find-nth-element-and-after

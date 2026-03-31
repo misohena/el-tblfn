@@ -2125,9 +2125,18 @@ column LEFT-COLSPEC of LEFT-TABLE and column RIGHT-COLSPEC of
 RIGHT-TABLE are equal.
 
 Rows from LEFT-TABLE that have no matching row in RIGHT-TABLE are
-removed by default.
-However, if INCLUDE-MISMATCH is non-nil, columns with PADDING are
-concatenated.
+removed by default.  However, if INCLUDE-MISMATCH is one of the symbols
+t, left, both, or full, such rows are included in the result.  In that
+case, the columns corresponding to the right table are filled with the
+value of PADDING.
+
+Rows from RIGHT-TABLE that have no matching row in LEFT-TABLE are
+removed by default.  However, if INCLUDE-MISMATCH is one of the symbols
+right, both, or full, such rows are included in the result.  In that
+case, among the columns corresponding to the left table, the column
+specified by LEFT-COLSPEC is filled with the value from the column
+specified by RIGHT-COLSPEC, and all other columns are filled with the
+value of PADDING.
 
 By default, the column specified by RIGHT-COLSPEC is removed, but if
 KEEP-RIGHT-KEY-COL is non-nil, it is not removed.
@@ -2145,7 +2154,9 @@ The returned table does not include the footer.
                     &key include-mismatch keep-right-key-col
                     (padding "") right-single-row)
       rest-args
-    (let* ((left-colnames (tblfn-column-names left-table))
+    (let* ((referenced-flags (when (memq include-mismatch '(right both full))
+                               (cons nil nil)))
+           (left-colnames (tblfn-column-names left-table))
            (right-colnames (tblfn-column-names right-table))
            (left-colcount (length left-colnames))
            (left-body (tblfn-body left-table))
@@ -2154,34 +2165,47 @@ The returned table does not include the footer.
            (right-key-col (tblfn-column-index right-table (or right-colspec
                                                               left-colspec))))
       (tblfn-add-header-row
-       (cl-loop for left-row in left-body
-                for left-row-padded = (tblfn-take-padded left-row left-colcount
-                                                         padding)
-                for key = (nth left-key-col left-row)
-                for pred = (lambda (row) (equal (nth right-key-col row) key))
-                for right-rows
-                = (if right-single-row
-                      (when-let* ((right-row (seq-find pred right-body)))
-                        (list right-row))
-                    (seq-filter pred right-body))
-                if right-rows
-                nconc
-                (cl-loop for right-row in right-rows
-                         collect
-                         (append
+       (nconc
+        (cl-loop for left-row in left-body
+                 for left-row-padded = (tblfn-take-padded left-row left-colcount
+                                                          padding)
+                 for key = (nth left-key-col left-row)
+                 for pred = (lambda (row) (equal (nth right-key-col row) key))
+                 for right-rows = (tblfn-join--find-right-rows right-body
+                                                               pred
+                                                               right-single-row
+                                                               referenced-flags)
+                 if right-rows
+                 nconc
+                 (cl-loop for right-row in right-rows
+                          collect
+                          (append
+                           left-row-padded
+                           (if keep-right-key-col
+                               right-row
+                             (seq-remove-at-position right-row right-key-col))))
+                 else
+                 if (and include-mismatch (not (eq include-mismatch 'right)))
+                 collect (append
                           left-row-padded
-                          (if keep-right-key-col
-                              right-row
-                            (seq-remove-at-position right-row right-key-col))))
-                else
-                if include-mismatch
-                collect (append
-                         left-row-padded
-                         (make-list
-                          (if keep-right-key-col
-                              (length right-colnames)
-                            (1- (length right-colnames)))
-                          padding)))
+                          (make-list
+                           (if keep-right-key-col
+                               (length right-colnames)
+                             (1- (length right-colnames)))
+                           padding)))
+        ;; 右側の参照されなかった行も含める(include-mismatchがright, both, full)
+        (when referenced-flags
+          (cl-loop for right-row in right-body
+                   for referenced in referenced-flags
+                   unless referenced
+                   collect
+                   (nconc
+                    (make-list left-key-col padding)
+                    (list (nth right-key-col right-row))
+                    (make-list (- left-colcount left-key-col 1) padding)
+                    (if keep-right-key-col
+                        right-row
+                      (seq-remove-at-position right-row right-key-col))))))
        ;; TODO: 2行以上のヘッダーの連結をする
        (append left-colnames
                (if keep-right-key-col
@@ -2196,6 +2220,26 @@ The returned table does not include the footer.
 ;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding  -1 t)) => ((a b a c) hline (1 2 1 10) (3 4 3 30) (5 6 -1 -1))
 ;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (1 11) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding -1 :right-single-row t)) => ((a b a c) hline (1 2 1 10) (3 4 3 30) (5 6 -1 -1))
 ;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (3 4) (5 6)) '((a c) (1 10) (1 11) (3 30)) 'a :include-mismatch t :keep-right-key-col t :padding -1)) => ((a b a c) hline (1 2 1 10) (1 2 1 11) (3 4 3 30) (5 6 -1 -1))
+;; TEST: (let ((tblfn-use-hlines t)) (tblfn-join '((a b) (1 2) (1 20) (3 4) (5 8)) '((a c) (1 10) (3 30) (1 11) (6 9)) 'a :include-mismatch 'both)) => ((a b c) hline (1 2 10) (1 2 11) (1 20 10) (1 20 11) (3 4 30) (5 8 "") (6 "" 9))
+
+(defun tblfn-join--find-right-rows (right-body pred right-single-row referenced-flags)
+  (if (null referenced-flags)
+      ;; 参照済み記録不要
+      (if right-single-row
+          (when-let* ((right-row (seq-find pred right-body)))
+            (list right-row))
+        (seq-filter pred right-body))
+    ;; 参照済み記録が必要
+    (let (result)
+      (while (and right-body (not (and right-single-row result)))
+        (let ((row (pop right-body)))
+          (when (funcall pred row)
+            (push row result)
+            (setcar referenced-flags t)))
+        (unless (cdr referenced-flags)
+          (setcdr referenced-flags (cons nil nil)))
+        (setq referenced-flags (cdr referenced-flags)))
+      (nreverse result))))
 
 (cl-defun tblfn-cross-join (left-table right-table &key (padding ""))
   "Return a new table containing the Cartesian product of LEFT-TABLE and
