@@ -687,7 +687,7 @@ For :calcopt, see `tblfn-calcopt-parse'.
   "Return the result of applying VFUN to the column specified by COLSPEC.
 
 VFUN is a Calc vector function name (string), such as \"vsum\",
-\"vmean\", \"vmax\", etc.
+\"vmean\", \"vmax\", \"<round(vmean(#), 2)>\", etc.
 
 For :calcopt, see `tblfn-calcopt-parse'.
 
@@ -2509,7 +2509,8 @@ values for rows with the same grouping key.
 
 VFUN specifies how to aggregate values:
 
-  - Calc vector function name (string, e.g., \"vsum\", \"vmean\"):
+  - Calc vector function name
+    (string, e.g., \"vsum\", \"vmean\", \"<round(vmean(#), 2)>\"):
       Apply that function
   - Function: Apply that function to the list of values
   - nil (default): Use \"vsum\"
@@ -2661,6 +2662,7 @@ Example:
 ;; TEST: (tblfn-aggregate '(("name" "class" "price") ("apple" "fruits" "150") ("onion" "vegetables" "100") ("banana" "fruits" "300") ("orange" "fruits" "100") ("cabbage" "vegetables" "400") ("tomato" "vegetables" "100")) '(if (>= (tblfn-to-number price) 200) "High" "Low") (lambda (row) 1)) => (("Key" "Value") ("Low" "4") ("High" "2"))
 ;; TEST: (tblfn-aggregate '(("Product" "Category" "Quantity" "Price") ("apple" "fruits" 2 150) ("onion" "vegetables" 3 100) ("banana" "fruits" 1 300) ("orange" "fruits" 10 100) ("cabbage" "vegetables" 1 400) ("tomato" "vegetables" 4 100)) "Category" '(* Quantity Price) nil "Total") => (("Category" "Total") ("fruits" "1600") ("vegetables" "1100"))
 ;; TEST: (tblfn-aggregate '(("Product" "Category" "Price" "Quantity" "Origin") ("Apple" "Fruit" "150" "5" "Domestic") ("Tomato" "Vegetable" "200" "8" "Domestic") ("Cheese" "Dairy" "450" "3" "Domestic") ("Banana" "Fruit" "80" "2" "Domestic") ("Orange" "Fruit" "99" "10" "Imported") ("Potato" "Vegetable" "80" "7" "Imported") ("Beef" "Meat" "800" "4" "Imported") ("Pork" "Meat" "353" "3" "Domestic")) "Category" '(("Price" "vsum" "Total") ("Price" "vmean" "Average" :calcopt 4))) => (("Category" "Total" "Average") ("Vegetable" "280" "140") ("Dairy" "450" "450") ("Fruit" "329" "109.6667") ("Meat" "1153" "576.5000"))
+;; TEST: (tblfn-aggregate '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Orange" "Fruit" "99") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800") ("Pork" "Meat" "353")) "Category" "Price" "<float(round(vmean(#),3))>" "Average") => (("Category" "Average") ("Vegetable" "140.") ("Dairy" "450.") ("Fruit" "109.667") ("Meat" "576.5"))
 
 (defun tblfn-make-row-to-value-function (table colspec-or-function)
   (cond
@@ -2838,7 +2840,7 @@ SUM-COLSPECS is a list specifying the columns to add sum values to."
   "Add a footer row with calculated values to TABLE.
 
 VFUN is a Calc vector function name (string), such as \"vsum\",
-\"vmean\", \"vmax\", etc.
+\"vmean\", \"vmax\", \"<round(vmean(#), 2)>\", etc.
 
 CALC-COLSPECS is a list specifying the columns to calculate values for.
 The calculated values are placed in the corresponding columns of the
@@ -2956,8 +2958,9 @@ Return everything from the first non-ignorable row onwards."
 
 (defun tblfn-calc-vector-fun (fun values &optional calcopt)
   (tblfn-calc-eval
-   (concat fun
-           "(["
+   (concat "call("
+           fun
+           ", ["
            (mapconcat (lambda (x) (format "%s" x)) values ",")
            "])")
    calcopt))

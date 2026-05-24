@@ -141,4 +141,19 @@ VALUE-COLSPEC-OR-FUNCTIONは現状では:
 リストの先頭がintegerp、stringp、conspであるなら複数列指定、functionpなら従来のS式と判定する。
 
 その場合、VFUN、NEW-VALUE-COLNAME、CALCOPT引数が無駄になる。省略時のデフォルト値として活用しても良い。
+** DONE vsum等を指定するところにlambda関数を指定出来るようにする
+CLOSED: [2026-05-24 Sun 18:01]
 
+現在は次のようにしている。
+
+\( vsum([3, 6, 7]) => 16 \)
+
+しかしこうは書けない。
+
+\( <round(vmean(#), 2)> [3, 6, 7] => <round(vmean(#), 2)> [3, 6, 7]\)
+
+callを使えば書ける。
+
+\( call(vsum, [3, 6, 7]) => 16 \)
+
+\( call(<round(vmean(#), 2)>, [3, 6, 7]) => 5.33\)
