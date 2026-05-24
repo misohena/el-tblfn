@@ -9,25 +9,6 @@
 - (tblfn-add-footer-vcalc table nil ("Price" "vsum" :calcopt 1) ("Percentage" "vsum" :calcopt 2))
 みたいな感じ？
 
-** TODO tblfn-aggregateで複数の列を集計できるようにする
-現在は個別に集計して結合しなければならない。
-tblfn-aggregate-columnsのような関数を追加することもできるが、VALUE-COLSPEC-OR-FUNCTIONに複数指定できるようにした方が使いやすい気もする。
-
-VALUE-COLSPEC-OR-FUNCTIONは現状では:
-- COLSPEC
-  - integer
-  - string
-- FUNCTION
-  - S-expression (最初の要素が関数)
-  - Function
-
-なのでこれを複数にすることは一応はできる:
-: ( INTEGER|STRING +|SEXP|FUNCTION+ |(INTEGER|STRING|SEXP|FUNCTION [VFUN [COLNAME]] [:calcopt CALCOPT] ) ... )
-
-リストの先頭がintegerp、stringp、conspであるなら複数列指定、functionpなら従来のS式と判定する。
-
-その場合、VFUN、NEW-VALUE-COLNAME、CALCOPT引数が無駄になる。省略時のデフォルト値として活用しても良い。
-
 ** TODO tblfn-sortは空のフィールドがあるとソートできない
 ** TODO tblfn-uniqueに比較関数を設定できるようにする
 キーが同じものは最初のものだけを残すようにしたい。
@@ -141,3 +122,23 @@ CLOSED: [2026-05-24 Sun 12:13]
 次の関数は保留(See: [[*tblfn-add-footer-sum|vcalcに:calcoptを指定可能にする][tblfn-add-footer-sum|vcalcに:calcoptを指定可能にする]]):
 - tblfn-add-footer-sum
 - tblfn-add-footer-vcalc
+** DONE tblfn-aggregateで複数の列を集計できるようにする
+CLOSED: [2026-05-24 Sun 17:41]
+現在は個別に集計して結合しなければならない。
+tblfn-aggregate-columnsのような関数を追加することもできるが、VALUE-COLSPEC-OR-FUNCTIONに複数指定できるようにした方が使いやすい気もする。
+
+VALUE-COLSPEC-OR-FUNCTIONは現状では:
+- COLSPEC
+  - integer
+  - string
+- FUNCTION
+  - S-expression (最初の要素が関数)
+  - Function
+
+なのでこれを複数にすることは一応はできる:
+: ( INTEGER|STRING +|SEXP|FUNCTION+ |(INTEGER|STRING|SEXP|FUNCTION [VFUN [COLNAME]] [:calcopt CALCOPT] ) ... )
+
+リストの先頭がintegerp、stringp、conspであるなら複数列指定、functionpなら従来のS式と判定する。
+
+その場合、VFUN、NEW-VALUE-COLNAME、CALCOPT引数が無駄になる。省略時のデフォルト値として活用しても良い。
+

@@ -2476,26 +2476,36 @@ Examples:
 ;;;; Table Aggregation
 
 
-(defun tblfn-aggregate (table by-colspec-or-function
-                              value-colspec-or-function
+(defun tblfn-aggregate (table by-colspec-or-function values-spec
                               &rest rest-args)
   "Return a table with values aggregated by grouping key.
 
 BY-COLSPEC-OR-FUNCTION determines the grouping key:
-  - Column specifier: Group by values in that column
+  - Column specifier (integer or string): Group by values in that column
   - S-expression: Group by the result of evaluating the expression for
-    each row (e.g., \\='(concat Region \"=\" Category))
+    each row (e.g., \\='(concat Region \" \" Category))
   - Function: Group by the result of calling the function with each row
 
-VALUE-COLSPEC-OR-FUNCTION determines the values to aggregate:
-  - Column specifier: Aggregate values from that column
-  - S-expression: Group by the result of evaluating the expression for
-    each row (e.g., \\='(* Quantity Price))
-  - Function: Aggregate the result of calling the function with each row
+VALUES-SPEC determines the values to aggregate:
+  - For a single value:
+    - Column specifier(integer or string): Aggregate values from that column
+    - S-expression: Aggregate the result of evaluating the expression for
+      each row (e.g., \\='(* Quantity Price))
+    - Function: Aggregate the result of calling the function with each row
+  - For multiple values:
+    - A list of aggregation value specifier
+      ( AGG-VALUE-SPEC... )
+      AGG-VALUE-SPEC:
+      - ( COLSPEC-OR-FUNCTION [ VFUN [ NEW-COLNAME ] ] [ :calcopt CALCOPT ] )
+        - COLSPEC-OR-FUNCTION: same forms as the single-value case above
+        - NEW-COLNAME: name of the aggregated value column; if nil, uses
+            the original column name, or \"Value\" if COLSPEC-OR-FUNCTION
+            is not a column specifier
+      - Column specifier (integer or string)
 
-The result is a two-column table.  The first column contains unique
-grouping keys.  The second column contains aggregated values for rows
-with the same grouping key.
+The result is a table with two or more columns.  The first column
+contains unique grouping keys.  Subsequent columns contain aggregated
+values for rows with the same grouping key.
 
 VFUN specifies how to aggregate values:
 
@@ -2505,74 +2515,152 @@ VFUN specifies how to aggregate values:
   - nil (default): Use \"vsum\"
 
 NEW-VALUE-COLNAME specifies the name of the aggregated value column.
-When nil, uses the original column name if VALUE-COLSPEC-OR-FUNCTION is
-a column specifier, or \"Value\" if it is a function.
+Used only when VALUES-SPEC is in the single-value form.  When nil, uses
+the original column name if VALUES-SPEC is a column specifier, or
+\"Value\" otherwise.
 
 NEW-KEY-COLNAME specifies the name of the grouping key column.
 When nil, uses the original column name if BY-COLSPEC-OR-FUNCTION is
-a column specifier, or \"Key\" if it is a function.
+a column specifier, or \"Key\" otherwise.
 
-For :calcopt, see `tblfn-calcopt-parse'.
+For :calcopt CALCOPT, see `tblfn-calcopt-parse'.
 
 Example:
-  (tblfn-aggregate
-   \\='((\"Product\" \"Category\" \"Price\")
-      (\"Apple\" \"Fruit\" \"150\")
-      (\"Tomato\" \"Vegetable\" \"200\")
-      (\"Cheese\" \"Dairy\" \"450\")
-      (\"Banana\" \"Fruit\" \"80\")
-      (\"Potato\" \"Vegetable\" \"80\")
-      (\"Beef\" \"Meat\" \"800\"))
-   \"Category\" \"Price\" \"vsum\" \"Total\")
+  (setq test-table
+        \\='((\"Product\" \"Category\" \"Price\" \"Quantity\" \"Origin\")
+          (\"Apple\" \"Fruit\" \"150\" \"5\" \"Domestic\")
+          (\"Tomato\" \"Vegetable\" \"200\" \"8\" \"Domestic\")
+          (\"Cheese\" \"Dairy\" \"450\" \"3\" \"Domestic\")
+          (\"Banana\" \"Fruit\" \"80\" \"2\" \"Domestic\")
+          (\"Orange\" \"Fruit\" \"99\" \"10\" \"Imported\")
+          (\"Potato\" \"Vegetable\" \"80\" \"7\" \"Imported\")
+          (\"Beef\" \"Meat\" \"800\" \"4\" \"Imported\")
+          (\"Pork\" \"Meat\" \"353\" \"3\" \"Domestic\")))
+
+  (tblfn-aggregate test-table \"Category\" \"Price\" \"vsum\" \"Total\")
   => ((\"Category\" \"Total\")
-      (\"Fruit\" \"230\")
       (\"Vegetable\" \"280\")
       (\"Dairy\" \"450\")
-      (\"Meat\" \"800\"))
-\n(fn TABLE BY-COLSPEC-OR-FUNCTION VALUE-COLSPEC-OR-FUNCTION \
+      (\"Fruit\" \"329\")
+      (\"Meat\" \"1153\"))
+
+  (tblfn-aggregate
+   test-table
+   \"Category\"
+   \\='((\"Price\" \"vsum\" \"Total\")
+     (\"Price\" \"vmean\" \"Average\" :calcopt 4)))
+  => ((\"Category\" \"Total\" \"Average\")
+      (\"Vegetable\" \"280\" \"140\")
+      (\"Dairy\" \"450\" \"450\")
+      (\"Fruit\" \"329\" \"109.6667\")
+      (\"Meat\" \"1153\" \"576.5000\"))
+
+  (tblfn-aggregate
+   test-table
+   \\='(concat Origin \" \" Category) \"Price\" \"vsum\" \"Total\")
+  => ((\"Key\" \"Total\")
+      (\"Imported Fruit\" \"99\")
+      (\"Domestic Dairy\" \"450\")
+      (\"Imported Vegetable\" \"80\")
+      (\"Domestic Vegetable\" \"200\")
+      (\"Imported Meat\" \"800\")
+      (\"Domestic Fruit\" \"230\")
+      (\"Domestic Meat\" \"353\"))
+
+  (tblfn-aggregate
+   test-table
+   \"Category\"
+   \\='(* (tblfn-to-number Price) (tblfn-to-number Quantity))
+   \"vsum\" \"Total\")
+  => ((\"Category\" \"Total\")
+      (\"Vegetable\" \"2160\")
+      (\"Dairy\" \"1350\")
+      (\"Fruit\" \"1900\")
+      (\"Meat\" \"4259\"))
+\n(fn TABLE BY-COLSPEC-OR-FUNCTION VALUES-SPEC \
 &optional VFUN NEW-VALUE-COLNAME NEW-KEY-COLNAME &key CALCOPT)"
   (tblfn--let-args (vfun new-value-colname new-key-colname &key calcopt)
       rest-args
-    (unless new-key-colname
-      (setq new-key-colname (tblfn--aggregate-default-column-name
-                             table by-colspec-or-function "Key")))
-    (unless new-value-colname
-      (setq new-value-colname (tblfn--aggregate-default-column-name
-                               table value-colspec-or-function "Value")))
 
-    (let ((key-function (tblfn-make-row-to-value-function
-                         table by-colspec-or-function))
-          (value-function (tblfn-make-row-to-value-function
-                           table value-colspec-or-function))
-          (alist nil))
-
-      (tblfn-mapc-body-row
-       table
-       (lambda (row)
-         (push (funcall value-function row)
-               (alist-get (funcall key-function row) alist nil nil #'equal))))
-      (setq alist (nreverse alist))
-
-      (cond
-       ((functionp vfun)
-        (dolist (kv alist)
-          (let ((values (cdr kv)))
-            (setcdr kv (cons (funcall vfun values) nil)))))
-       (t
-        (dolist (kv alist)
-          (let* ((values (cdr kv))
-                 (aggregated (tblfn-calc-vector-fun (or vfun "vsum") values
-                                                    calcopt)))
-            (setcdr kv (cons aggregated nil))))))
-
+    (let* (;; グループ化(keyとrowリストのalistを作る)
+           (key-rows-alist
+            (tblfn-group-body-rows-by table by-colspec-or-function))
+           ;; VALUES-SPECを正規化
+           (values-spec-2
+            (progn
+              ;; values-specを列指定のリストに統一
+              (when (or (integerp values-spec)
+                        (stringp values-spec)
+                        (functionp values-spec)
+                        (and (consp values-spec) (functionp (car values-spec))))
+                (setq values-spec
+                      (list (list values-spec vfun new-value-colname
+                                  :calcopt calcopt))))
+              ;;
+              (cl-loop
+               for value-spec in values-spec
+               ;; 列数、列名のみの指定を許容する。
+               when (or (integerp value-spec)
+                        (stringp value-spec)
+                        ;;(functionp value-spec)
+                        ;; ↑ここにfunctionがあると (FUNCTION ...) が1
+                        ;; つのS式か列指定リストか曖昧になる
+                        ;;(and (consp value-spec) (functionp (car value-spec)))
+                        ;; ↑これがあると ((FUNCTION ...) ...)  におけ
+                        ;; る1つめの列がS式か関数か曖昧になる
+                        )
+               do (setq value-spec
+                        (list value-spec vfun :calcopt calcopt))
+               ;; COLSPEC-OR-FUNCTION [VFUN [NEW-COLNAME]] [:calcopt CALCOPT]
+               for keyword-args = (cl-member-if #'keywordp (cdr value-spec))
+               for positional-args = (cl-ldiff value-spec keyword-args)
+               for value-colspec = (pop positional-args)
+               for value-vfun = (or (pop positional-args) vfun)
+               for value-colname = (pop positional-args)
+               for value-calcopt = (plist-get keyword-args :calcopt)
+               for value-extractor = (tblfn-make-row-to-value-function
+                                      table value-colspec)
+               collect (list value-colspec value-extractor value-vfun
+                             value-colname value-calcopt))))
+           (result-body
+            (cl-loop for (key . rows) in key-rows-alist
+                     collect
+                     (cons
+                      key
+                      (cl-loop for (_value-colspec value-extractor value-vfun
+                                                   _value-colname value-calcopt)
+                               in values-spec-2
+                               for values = (mapcar value-extractor rows)
+                               collect
+                               (cond
+                                ((functionp value-vfun)
+                                 (funcall value-vfun values))
+                                (t
+                                 (tblfn-calc-vector-fun (or value-vfun "vsum")
+                                                        values
+                                                        value-calcopt)))))))
+           (result-header
+            (cons
+             (or new-key-colname
+                 (tblfn--aggregate-default-column-name
+                  table by-colspec-or-function "Key"))
+             (cl-loop for (value-colspec _value-extractor _value-vfun
+                                         value-colname _value-calcopt)
+                      in values-spec-2
+                      collect
+                      (or value-colname
+                          (tblfn--aggregate-default-column-name
+                           table value-colspec
+                           "Value"))))))
       (tblfn-add-header-row
-       alist
-       (list new-key-colname new-value-colname)
+       result-body
+       result-header
        table))))
 ;; TEST: (tblfn-aggregate '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1")) "class" "price" "vsum") => (("class" "price") ("fruits" "70.2") ("vegetables" "102.3"))
 ;; TEST: (tblfn-aggregate '(("name" "class" "price") ("apple" "fruits" "150") ("onion" "vegetables" "100") ("banana" "fruits" "300") ("orange" "fruits" "100") ("cabbage" "vegetables" "400") ("tomato" "vegetables" "100")) (lambda (row) (if (>= (tblfn-to-number (nth 2 row)) 200) "High" "Low")) (lambda (row) 1)) => (("Key" "Value") ("Low" "4") ("High" "2"))
 ;; TEST: (tblfn-aggregate '(("name" "class" "price") ("apple" "fruits" "150") ("onion" "vegetables" "100") ("banana" "fruits" "300") ("orange" "fruits" "100") ("cabbage" "vegetables" "400") ("tomato" "vegetables" "100")) '(if (>= (tblfn-to-number price) 200) "High" "Low") (lambda (row) 1)) => (("Key" "Value") ("Low" "4") ("High" "2"))
 ;; TEST: (tblfn-aggregate '(("Product" "Category" "Quantity" "Price") ("apple" "fruits" 2 150) ("onion" "vegetables" 3 100) ("banana" "fruits" 1 300) ("orange" "fruits" 10 100) ("cabbage" "vegetables" 1 400) ("tomato" "vegetables" 4 100)) "Category" '(* Quantity Price) nil "Total") => (("Category" "Total") ("fruits" "1600") ("vegetables" "1100"))
+;; TEST: (tblfn-aggregate '(("Product" "Category" "Price" "Quantity" "Origin") ("Apple" "Fruit" "150" "5" "Domestic") ("Tomato" "Vegetable" "200" "8" "Domestic") ("Cheese" "Dairy" "450" "3" "Domestic") ("Banana" "Fruit" "80" "2" "Domestic") ("Orange" "Fruit" "99" "10" "Imported") ("Potato" "Vegetable" "80" "7" "Imported") ("Beef" "Meat" "800" "4" "Imported") ("Pork" "Meat" "353" "3" "Domestic")) "Category" '(("Price" "vsum" "Total") ("Price" "vmean" "Average" :calcopt 4))) => (("Category" "Total" "Average") ("Vegetable" "280" "140") ("Dairy" "450" "450") ("Fruit" "329" "109.6667") ("Meat" "1153" "576.5000"))
 
 (defun tblfn-make-row-to-value-function (table colspec-or-function)
   (cond
@@ -2602,6 +2690,25 @@ Example:
    ;; COLSPEC (string or integer)
    (t
     (tblfn-column-name table colspec-or-function))))
+
+(defun tblfn-group-body-rows-by (table by-colspec-or-function)
+  (let ((key-extractor (tblfn-make-row-to-value-function
+                        table by-colspec-or-function))
+        (alist nil))
+    (tblfn-mapc-body-row
+     table
+     (lambda (row)
+       (push row
+             (alist-get (funcall key-extractor row)
+                        alist nil nil #'equal))))
+    ;; 個々のrowリストの順番を直す
+    (let ((p alist))
+      (while p
+        (setcdr p (nreverse (cdr p)))
+        (setq p (cdr p))))
+    ;; alistの順番を直す
+    (nreverse alist)))
+;; TEST: (tblfn-group-body-rows-by '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1")) "class") => (("fruits" ("orange" "fruits" "34.5") ("banana" "fruits" "23.4") ("apple" "fruits" "12.3")) ("vegetables" ("tomato" "vegetables" "45.1") ("cabbage" "vegetables" "23.1") ("onion" "vegetables" "34.1")))
 
 (defun tblfn-count-by (table by-colspec-or-function new-count-colname
                              &optional new-key-colname)
