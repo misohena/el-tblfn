@@ -672,21 +672,32 @@ Only rows in TABLE's body are included (header and footer rows are excluded)."
     (nreverse result)))
 ;; TEST: (tblfn-column-values '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (10 11 12)) "B") => (2 5 8)
 
-(defun tblfn-column-sum (table colspec)
+(defun tblfn-column-sum (table colspec &rest rest-args)
   "Return the sum of all values in the column specified by COLSPEC.
-Only rows in TABLE's body are included (header and footer rows are excluded)."
-  (tblfn-column-vcalc table colspec "vsum"))
+Only rows in TABLE's body are included (header and footer rows are excluded).
+
+For :calcopt, see `tblfn-calcopt-parse'.
+\n(fn TABLE COLSPEC &key CALCOPT)"
+  (tblfn--let-args (&key calcopt)
+      rest-args
+    (tblfn-column-vcalc table colspec "vsum" :calcopt calcopt)))
 ;; TEST: (tblfn-column-sum '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (10 11 12)) "C") => "18"
 
-(defun tblfn-column-vcalc (table colspec vfun)
+(defun tblfn-column-vcalc (table colspec vfun &rest rest-args)
   "Return the result of applying VFUN to the column specified by COLSPEC.
 
 VFUN is a Calc vector function name (string), such as \"vsum\",
 \"vmean\", \"vmax\", etc.
 
-Only rows in TABLE's body are included (header and footer rows are excluded)."
-  (tblfn-calc-vector-fun (or vfun "vsum")
-                         (tblfn-column-values table colspec)))
+For :calcopt, see `tblfn-calcopt-parse'.
+
+Only rows in TABLE's body are included (header and footer rows are excluded).
+\n(fn TABLE COLSPEC VFUN &key CALCOPT)"
+  (tblfn--let-args (&key calcopt)
+      rest-args
+    (tblfn-calc-vector-fun (or vfun "vsum")
+                           (tblfn-column-values table colspec)
+                           calcopt)))
 ;; TEST: (tblfn-column-vcalc '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (10 11 12)) "C" "vmean") => "6"
 
 (defun tblfn-select-columns (table &rest colspecs)
@@ -2467,8 +2478,7 @@ Examples:
 
 (defun tblfn-aggregate (table by-colspec-or-function
                               value-colspec-or-function
-                              &optional
-                              vfun new-value-colname new-key-colname)
+                              &rest rest-args)
   "Return a table with values aggregated by grouping key.
 
 BY-COLSPEC-OR-FUNCTION determines the grouping key:
@@ -2502,6 +2512,8 @@ NEW-KEY-COLNAME specifies the name of the grouping key column.
 When nil, uses the original column name if BY-COLSPEC-OR-FUNCTION is
 a column specifier, or \"Key\" if it is a function.
 
+For :calcopt, see `tblfn-calcopt-parse'.
+
 Example:
   (tblfn-aggregate
    \\='((\"Product\" \"Category\" \"Price\")
@@ -2516,42 +2528,47 @@ Example:
       (\"Fruit\" \"230\")
       (\"Vegetable\" \"280\")
       (\"Dairy\" \"450\")
-      (\"Meat\" \"800\"))"
-  (unless new-key-colname
-    (setq new-key-colname (tblfn--aggregate-default-column-name
-                           table by-colspec-or-function "Key")))
-  (unless new-value-colname
-    (setq new-value-colname (tblfn--aggregate-default-column-name
-                             table value-colspec-or-function "Value")))
+      (\"Meat\" \"800\"))
+\n(fn TABLE BY-COLSPEC-OR-FUNCTION VALUE-COLSPEC-OR-FUNCTION \
+&optional VFUN NEW-VALUE-COLNAME NEW-KEY-COLNAME &key CALCOPT)"
+  (tblfn--let-args (vfun new-value-colname new-key-colname &key calcopt)
+      rest-args
+    (unless new-key-colname
+      (setq new-key-colname (tblfn--aggregate-default-column-name
+                             table by-colspec-or-function "Key")))
+    (unless new-value-colname
+      (setq new-value-colname (tblfn--aggregate-default-column-name
+                               table value-colspec-or-function "Value")))
 
-  (let ((key-function (tblfn-make-row-to-value-function
-                       table by-colspec-or-function))
-        (value-function (tblfn-make-row-to-value-function
-                         table value-colspec-or-function))
-        (alist nil))
+    (let ((key-function (tblfn-make-row-to-value-function
+                         table by-colspec-or-function))
+          (value-function (tblfn-make-row-to-value-function
+                           table value-colspec-or-function))
+          (alist nil))
 
-    (tblfn-mapc-body-row
-     table
-     (lambda (row)
-       (push (funcall value-function row)
-             (alist-get (funcall key-function row) alist nil nil #'equal))))
-    (setq alist (nreverse alist))
+      (tblfn-mapc-body-row
+       table
+       (lambda (row)
+         (push (funcall value-function row)
+               (alist-get (funcall key-function row) alist nil nil #'equal))))
+      (setq alist (nreverse alist))
 
-    (cond
-     ((functionp vfun)
-      (dolist (kv alist)
-        (let ((values (cdr kv)))
-          (setcdr kv (cons (funcall vfun values) nil)))))
-     (t
-      (dolist (kv alist)
-        (let* ((values (cdr kv))
-               (aggregated (tblfn-calc-vector-fun (or vfun "vsum") values)))
-          (setcdr kv (cons aggregated nil))))))
+      (cond
+       ((functionp vfun)
+        (dolist (kv alist)
+          (let ((values (cdr kv)))
+            (setcdr kv (cons (funcall vfun values) nil)))))
+       (t
+        (dolist (kv alist)
+          (let* ((values (cdr kv))
+                 (aggregated (tblfn-calc-vector-fun (or vfun "vsum") values
+                                                    calcopt)))
+            (setcdr kv (cons aggregated nil))))))
 
-    (tblfn-add-header-row
-     alist
-     (list new-key-colname new-value-colname)
-     table)))
+      (tblfn-add-header-row
+       alist
+       (list new-key-colname new-value-colname)
+       table))))
 ;; TEST: (tblfn-aggregate '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1")) "class" "price" "vsum") => (("class" "price") ("fruits" "70.2") ("vegetables" "102.3"))
 ;; TEST: (tblfn-aggregate '(("name" "class" "price") ("apple" "fruits" "150") ("onion" "vegetables" "100") ("banana" "fruits" "300") ("orange" "fruits" "100") ("cabbage" "vegetables" "400") ("tomato" "vegetables" "100")) (lambda (row) (if (>= (tblfn-to-number (nth 2 row)) 200) "High" "Low")) (lambda (row) 1)) => (("Key" "Value") ("Low" "4") ("High" "2"))
 ;; TEST: (tblfn-aggregate '(("name" "class" "price") ("apple" "fruits" "150") ("onion" "vegetables" "100") ("banana" "fruits" "300") ("orange" "fruits" "100") ("cabbage" "vegetables" "400") ("tomato" "vegetables" "100")) '(if (>= (tblfn-to-number price) 200) "High" "Low") (lambda (row) 1)) => (("Key" "Value") ("Low" "4") ("High" "2"))
@@ -2631,9 +2648,7 @@ This is similar to SQL's \"SELECT col, COUNT(*) FROM table GROUP BY col\"."
 
 
 (defun tblfn-add-percentage-column (table value-colspec percentage-colname
-                                          &optional
-                                          change-footer
-                                          calc-option-plist)
+                                          &rest rest-args)
   "Add a column containing percentages to the right of TABLE.
 
 First, sum all values in the column specified by VALUE-COLSPEC in
@@ -2648,45 +2663,46 @@ the footer row must be a valid number.
 Even when CHANGE-FOOTER is non-nil, the denominator for percentages
 \(the sum of values in the VALUE-COLSPEC column) is limited to the body.
 
-CALC-OPTION-PLIST is a property list holding options to be applied
-during calculation.  See the contents of the `calc-do-calc-eval'
-function for valid properties.  The default is
-\\='(calc-float-format (fix -2)).
-
-When CALC-OPTION-PLIST is a natural number, it is equivalent to
-specifying \\='(calc-float-format (fix CALC-OPTION-PLIST)).
-When it is 0, the result will be an integer."
-  (let ((total (tblfn-column-sum table value-colspec))
-        (value-col (tblfn-column-index table value-colspec)))
-    (tblfn-add-header-row
-     (let ((footer-hline-cons-cell (if change-footer
-                                       nil
-                                     (tblfn-footer-hline-and-after table)))
-           (in-footer nil)
-           (rest (tblfn-after-header table))
-           (result nil))
-       (while rest
-         (when (eq rest footer-hline-cons-cell)
-           (setq in-footer t))
-         (push
-          (let ((row (car rest)))
-            (cond
-             (in-footer
-              row)
-             ((tblfn-data-row-p row)
-              (append row
-                      (list (tblfn-add-percentage-column--calc
-                             (nth value-col row) total
-                             calc-option-plist))))
-             (t
-              row)))
-          result)
-         (setq rest (cdr rest)))
-       (nreverse result))
-     ;; Column names
-     (append (tblfn-column-names table)
-             (list percentage-colname))
-     table)))
+For :calcopt, see `tblfn-calcopt-parse'.
+The default is \\='(calc-float-format (fix -2)).
+When CALCOPT is a natural number, it is equivalent to
+specifying \\='(calc-float-format (fix -CALCOPT)).
+When it is 0, the result will be an integer string.
+\n(fn TABLE VALUE-COLSPEC PERCENTAGE-COLNAME \
+&optional CHANGE-FOOTER &key CALCOPT)"
+  (tblfn--let-args (change-footer calcopt-old &key calcopt)
+      rest-args
+    (let ((total (tblfn-column-sum table value-colspec))
+          (value-col (tblfn-column-index table value-colspec)))
+      (tblfn-add-header-row
+       (let ((footer-hline-cons-cell (if change-footer
+                                         nil
+                                       (tblfn-footer-hline-and-after table)))
+             (in-footer nil)
+             (rest (tblfn-after-header table))
+             (result nil))
+         (while rest
+           (when (eq rest footer-hline-cons-cell)
+             (setq in-footer t))
+           (push
+            (let ((row (car rest)))
+              (cond
+               (in-footer
+                row)
+               ((tblfn-data-row-p row)
+                (append row
+                        (list (tblfn-add-percentage-column--calc
+                               (nth value-col row) total
+                               (or calcopt calcopt-old)))))
+               (t
+                row)))
+            result)
+           (setq rest (cdr rest)))
+         (nreverse result))
+       ;; Column names
+       (append (tblfn-column-names table)
+               (list percentage-colname))
+       table))))
 ;; TEST: (tblfn-add-percentage-column '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1")) "price" "%") => (("name" "class" "price" "%") ("apple" "fruits" "12.3" "7.13") ("onion" "vegetables" "34.1" "19.77") ("banana" "fruits" "23.4" "13.57") ("orange" "fruits" "34.5" "20.00") ("cabbage" "vegetables" "23.1" "13.39") ("tomato" "vegetables" "45.1" "26.14"))
 ;; TEST: (tblfn-add-percentage-column '(("name" "class" "price") hline ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1") hline ("" "" "")) "price" "%") => (("name" "class" "price" "%") hline ("apple" "fruits" "12.3" "7.13") ("onion" "vegetables" "34.1" "19.77") ("banana" "fruits" "23.4" "13.57") ("orange" "fruits" "34.5" "20.00") ("cabbage" "vegetables" "23.1" "13.39") ("tomato" "vegetables" "45.1" "26.14") hline ("" "" ""))
 ;; TEST: (tblfn-add-percentage-column '(("name" "class" "price") hline ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1") hline ("" "" "172.5")) "price" "%" t) => (("name" "class" "price" "%") hline ("apple" "fruits" "12.3" "7.13") ("onion" "vegetables" "34.1" "19.77") ("banana" "fruits" "23.4" "13.57") ("orange" "fruits" "34.5" "20.00") ("cabbage" "vegetables" "23.1" "13.39") ("tomato" "vegetables" "45.1" "26.14") hline ("" "" "172.5" "100.00"))
@@ -2695,21 +2711,15 @@ When it is 0, the result will be an integer."
 (defvar tblfn-default-percentage-calc-properties
   '(calc-float-format (fix -2)))
 
-(defun tblfn-add-percentage-column--calc (value total calc-option-plist)
-  ;; TODO: calc-option-plistをもう少し指定しやすくする。
-  ;;       文字列は`org-table-eval-formula'の書式指定と同じにしてみたり。
-  (calc-eval
-   (cons
-    (if (eq calc-option-plist 0)
-        (format "round(100.0*(%s)/(%s))" value total)
-      (format "100.0*(%s)/(%s)" value total))
-    (cond
-     ((integerp calc-option-plist)
-      `(calc-float-format (fix ,(- calc-option-plist))))
-     ((consp calc-option-plist)
-      calc-option-plist)
-     (t
-      tblfn-default-percentage-calc-properties)))))
+(defun tblfn-add-percentage-column--calc (value total calcopt)
+  (tblfn-calc-eval
+   (if (eq calcopt 0)
+       (format "round(100.0*(%s)/(%s))" value total)
+     (format "100.0*(%s)/(%s)" value total))
+   (or
+    (tblfn-calcopt-parse calcopt)
+    tblfn-default-percentage-calc-properties)
+   'string))
 
 (defun tblfn-add-footer-sum (table &rest sum-colspecs)
   "Add a footer row with sum values to TABLE.
@@ -2822,9 +2832,9 @@ Return everything from the first non-ignorable row onwards."
 
 (defvar tblfn-calc-result-number-type 'string)
 
-(defun tblfn-calc-result-convert (result)
+(defun tblfn-calc-result-convert (result &optional result-number-type)
   (if (tblfn-number-string-p result)
-      (pcase tblfn-calc-result-number-type
+      (pcase (or result-number-type tblfn-calc-result-number-type)
         ('number
          (tblfn-to-number result))
         ('float
@@ -2837,13 +2847,44 @@ Return everything from the first non-ignorable row onwards."
          result))
     result))
 
-(defun tblfn-calc-vector-fun (fun values)
+(defun tblfn-calc-vector-fun (fun values &optional calcopt)
+  (tblfn-calc-eval
+   (concat fun
+           "(["
+           (mapconcat (lambda (x) (format "%s" x)) values ",")
+           "])")
+   calcopt))
+
+(defun tblfn-calcopt-parse (calcopt)
+  "Create a plist to pass to `calc-eval' from CALCOPT.
+
+Accepted values for CALCOPT:
+- integer : (calc-float-format (fix -INTEGER))
+- cons cell : a plist passed directly to `calc-eval'.
+              See the implementation of `calc-do-calc-eval' for
+              available properties.
+- nil : nil
+- other : reserved for future extensions."
+  ;; TODO: calcoptをもう少し指定しやすくする。
+  ;;       例えば文字列は`org-table-eval-formula'の書式指定と同じにしてみたり。
+  (cond
+   ((integerp calcopt)
+    `(calc-float-format (fix ,(- calcopt))))
+   ((consp calcopt)
+    calcopt)
+   (t
+    nil)))
+
+(defvar tblfn-calcopt-default nil)
+
+(defun tblfn-calc-eval (calc-expr-string
+                        &optional calcopt result-type)
   (tblfn-calc-result-convert
    (calc-eval
-    (concat fun
-            "(["
-            (mapconcat (lambda (x) (format "%s" x)) values ",")
-            "])"))))
+    (cons
+     calc-expr-string
+     (tblfn-calcopt-parse (or calcopt tblfn-calcopt-default))))
+   result-type))
 
 
 ;;;; String/Number Conversion
