@@ -112,8 +112,8 @@ writing let* directly is still a bit verbose."
                  `(,argdef positional-args))
                (alist-get '&rest arg-sections))
        (when (null (alist-get '&rest arg-sections))
-         '((_ (when positional-args
-                (signal 'wrong-number-of-arguments (list nil nil))))))
+         (list '(_ (when positional-args
+                     (signal 'wrong-number-of-arguments (list nil nil))))))
        (mapcar (lambda (argdef)
                  (if (symbolp argdef)
                      `(,argdef (plist-get

@@ -85,3 +85,14 @@ CLOSED: [2026-03-31 Tue 20:55]
 CLOSED: [2026-03-31 Tue 23:13]
 :include-mismatchにrightやboth(またはfull)を指定したら、右側のテーブルの左とマッチしなかったものを結果に含めるようにする。
 過去の保有リストと今の保有リストを並べて比較したいような場合に、左右両方のマッチしないもの(つまりすでに売ったものや新規で買ったもの)も表に含めたいようなケース。
+** DONE tblfn--let-argsの不具合を修正する
+CLOSED: [2026-05-24 Sun 10:59]
+(tblfn--let-args '(&key calcopt) rest-args ...)のように書くとcalcopt変数が複数作成されることがある。
+
+原因はtblfn--let-args-make-bindings関数内のnconc部分にある。
+引数の数が足りない場合のコードを生成しているが、その部分が
+: (nconc
+:   ...
+:   '((_ (when positional-args
+:     (signal 'wrong-number-of-arguments (list nil nil)))))
+となっているため、'( ... ) で書いたリストを破壊してしまう。
