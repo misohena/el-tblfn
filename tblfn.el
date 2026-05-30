@@ -2704,13 +2704,11 @@ Example:
              (alist-get (funcall key-extractor row)
                         alist nil nil #'equal))))
     ;; 個々のrowリストの順番を直す
-    (let ((p alist))
-      (while p
-        (setcdr p (nreverse (cdr p)))
-        (setq p (cdr p))))
+    (dolist (kv alist)
+      (setcdr kv (nreverse (cdr kv))))
     ;; alistの順番を直す
     (nreverse alist)))
-;; TEST: (tblfn-group-body-rows-by '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1")) "class") => (("fruits" ("orange" "fruits" "34.5") ("banana" "fruits" "23.4") ("apple" "fruits" "12.3")) ("vegetables" ("tomato" "vegetables" "45.1") ("cabbage" "vegetables" "23.1") ("onion" "vegetables" "34.1")))
+;; TEST: (tblfn-group-body-rows-by '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1")) "class") => (("fruits" ("apple" "fruits" "12.3") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5")) ("vegetables" ("onion" "vegetables" "34.1") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1")))
 
 (defun tblfn-count-by (table by-colspec-or-function new-count-colname
                              &optional new-key-colname)
