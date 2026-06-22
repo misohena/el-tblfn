@@ -1,6 +1,7 @@
 #+TITLE: Simple Data Table Functions for Emacs TODO List
 
 * Inbox
+** TODO tblfn-reduce-body-rows
 ** TODO tblfn-add-footer-sum|vcalcに:calcoptを指定可能にする
 単純に ~:calcopt~ キーワード引数を追加するだけだと、個別の列に対して別々の書式を指定できない。
 例えば2列目は12.3万円のように小数点以下1桁で3列目は23.45%のように2桁であるとか。
@@ -157,3 +158,48 @@ callを使えば書ける。
 \( call(vsum, [3, 6, 7]) => 16 \)
 
 \( call(<round(vmean(#), 2)>, [3, 6, 7]) => 5.33\)
+** DONE 売買取引履歴から結果の数量、取得費、利益を求める
+CLOSED: [2026-06-22 Mon 16:18]
+取引(売買)履歴テーブルから、取引後の残りの保有数量と移動平均法(加重平均)に基づく残り保有部分の総取得費や平均取得単価を求めたい。利益も一緒に計算できるのでそうする。
+
+関数名はtblfn-trade-remaining-quantity-and-costなど色々と候補を出したが、最終的にtblfn-trade-resultにした。何かより一般的な概念があるか探したけれど今ひとつ良い言葉が見つからないので、取引に特化した用語を使うことにする。もちろん他の用途にも十分使えると思う。在庫管理とか。
+
+本質的には、どこか特定の場所に何かを出し入れする際に使えるはず。極端な話、塩分濃度が異なる塩水を出し入れするような場合の計算にも使えるかもしれない。
+
+引数列の形式も色々と候補を出した。
+- (defun tblfn-trade-result (table buy-qty-colspec-or-fun sell-qty-colspec-or-fun buy-amount-colspec-or-fun sell-amount-colspec-or-fun &optional buy-pred) ...)
+- (defun tblfn-trade-result (table qty-colspec-or-fun amount-colspec-or-fun &optional buy-pred sell-qty-colspec-or-fun sell-amount-colspec-or-fun) ...)
+- (defun tblfn-trade-result (table buy-pred qty-colspec-or-fun amount-colspec-or-fun &optional sell-qty-colspec-or-fun sell-amount-colspec-or-fun) ...)
+- (defun tblfn-trade-result (table qty-colspec-or-fun amount-colspec-or-fun buy-pred) ...)
+
+最終的には (defun tblfn-trade-result (table buy-pred qty-colspec-or-fun amount-colspec-or-fun &optional sell-qty-colspec-or-fun sell-amount-colspec-or-fun) ...) にすることにした。
+
+#+begin_src elisp
+(defun tblfn-trade-result (table buy-pred qty-colspec-or-fun amount-colspec-or-fun &optional sell-qty-colspec-or-fun sell-amount-colspec-or-fun) ...)
+
+;; 売買で数量と金額の列が別れている場合
+(tblfn-trade-result trade-hist nil "購入数" "購入金額" "売却数" "売却金額")
+(tblfn-trade-result trade-hist '(string-empty-p 売却数) "購入数" "購入金額" "売却数" "売却金額")
+
+;; 数量と金額の列が別れていない場合
+(tblfn-trade-result trade-hist '(equal 取引 "買付") "数量" "受渡金額")
+(tblfn-trade-result trade-hist '(equal 取引 "買付") "数量" '(* 単価 数量))
+#+end_src
+
+戻り値は (quantity cost average-cost profit) という形式のリストとする。テーブルにしたいなら別途listで囲めば良い。
+
+派生的な関数も含めて次の関数を用意する。
+- tblfn-trade-result
+- tblfn-trade-result-quantity
+- tblfn-trade-result-cost
+- tblfn-trade-result-average-cost
+- tblfn-trade-result-profit
+
+tblfn-trade-resultがあれば全て実装できるが、tblfn-trade-result-costは平均処理が必要ないのでより効率が良い実装を使っても良い。
+
+取引のたびに値を補正する機能が欲しい。取引の後で端数処理が必要になる場合がある。
+cost-adjust-funとprofit-adjust-fun引数を追加。
+
+結果の値をどのような型で返すべきか。math関数の結果(Calcの内部表現)で返すのも能が無い。ほとんどの用途では文字列がベストだろう。tblfn-math-convert-valueという関数を追加してresult-type引数で指定できるようにする。calcopt引数も追加して桁数などを制御できるようにする。リストを指定することで結果リストの要素毎に指定出来るようにする。
+
+投資信託では10000口あたりの平均取得価額が欲しい。米ドルMMFなら100口単位で1ドル単位。average-cost-unit引数を追加。

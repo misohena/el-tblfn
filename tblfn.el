@@ -28,6 +28,8 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'calc-frac)
+(require 'calc-arith)
 
 
 ;;;; Macros
@@ -2825,8 +2827,7 @@ When it is 0, the result will be an integer string.
      (format "100.0*(%s)/(%s)" value total))
    (or
     (tblfn-calcopt-parse calcopt)
-    tblfn-default-percentage-calc-properties)
-   'string))
+    tblfn-default-percentage-calc-properties)))
 
 (defun tblfn-add-footer-sum (table &rest sum-colspecs)
   "Add a footer row with sum values to TABLE.
@@ -2860,6 +2861,339 @@ strings."
               (list footer-row)))))
 
 ;; TODO: defun tblfn-add-column-calc table
+
+
+;;;; Inventory Valuation (Moving-Average Cost)
+
+(defun tblfn-trade-result (table
+                           buy-pred
+                           qty-colspec-or-fun amount-colspec-or-fun
+                           &rest rest-args)
+  "Compute the post-trade holding quantity, total acquisition cost,
+average acquisition cost, and total realized profit from the trade
+history TABLE.
+
+The result is a 4-element list of the form
+(quantity cost average-cost profit).
+
+The acquisition cost is computed using the moving-average method.
+That is, at each sell transaction, the average acquisition cost is
+calculated by dividing the total acquisition cost accumulated so far
+by the total quantity held, and this average is used to compute the
+profit and the remaining total acquisition cost.
+
+BUY-PRED is a predicate that determines whether a row represents a
+buy transaction.
+If it is a function, its sole argument is the row (a list of fields).
+An s-expression to be evaluated for each row can also be specified.
+If nil, a function is used that returns t when the buy-quantity
+column's value is 0 or an empty string.
+Examples:
+  (lambda (row) (equal (nth 1 row) \"Buy\"))
+  \\='(equal Side \"Buy\")
+  \\='(string-empty-p Sell\\ Amount)
+
+QTY-COLSPEC-OR-FUN is the column or function used to obtain the buy
+quantity.
+A column name, a column index, a function taking the row (a list of
+fields) as its argument, or an s-expression can be specified.
+
+AMOUNT-COLSPEC-OR-FUN is the column or function used to obtain the buy
+amount.
+A column name, a column index, a function taking the row (a list of
+fields) as its argument, or an s-expression can be specified.
+
+SELL-QTY-COLSPEC-OR-FUN is the column or function used to obtain the
+sell quantity.
+If nil, it defaults to the same value as QTY-COLSPEC-OR-FUN.
+
+SELL-AMOUNT-COLSPEC-OR-FUN is the column or function used to obtain the
+sell amount.
+If nil, it defaults to the same value as AMOUNT-COLSPEC-OR-FUN.
+
+COST-ADJUST-FUN is a function used to adjust the total acquisition cost.
+It is called with the resulting amount after the total acquisition cost
+has been reduced by a sell transaction.
+The value returned by the function becomes the new total acquisition
+cost.
+The amount may be an Emacs Calc fraction.
+This can be used to round off fractional amounts after each sale.
+
+PROFIT-ADJUST-FUN is a function used to adjust the realized profit.
+It is called with the realized profit from a sell transaction.
+The value returned by the function becomes the realized profit for that
+transaction.
+The amount may be an Emacs Calc fraction.
+This can be used to round off fractional amounts after each sale.
+
+RESULT-TYPE is a symbol specifying the type of each resulting value.
+For the possible values, see the dst-type argument of
+`tblfn-math-convert-value'.
+
+CALCOPT is the option value passed to `calc-eval' when converting each
+resulting value to its final form. For the possible values, see
+`tblfn-calcopt-parse'.
+If it is a list, its elements correspond to the elements of the result
+list.
+
+AVERAGE-COST-UNIT specifies the unit quantity used as the basis for
+computing the average acquisition cost (the third element of the result
+list). The default is 1.
+
+Usage example:
+(list \\='(\"Quantity\" \"Cost\" \"Average Cost\" \"Profit\")
+      \\='hline
+      (tblfn-trade-result
+        table \\='(equal Side \"Buy\") \"Quantity\" \"Net Amount\"))
+
+(tblfn-trade-result table nil
+    \"Buy Quantity\" \"Buy Net Amount\"
+    \"Sell Quantity\" \"Sell Net Amount\")
+\n(fn TABLE BUY-PRED QTY-COLSPEC-OR-FUN AMOUNT-COLSPEC-OR-FUN &optional SELL-QTY-COLSPEC-OR-FUN SELL-AMOUNT-COLSPEC-OR-FUN COST-ADJUST-FUN PROFIT-ADJUST-FUN &key RESULT-TYPE CALCOPT AVERAGE-COST-UNIT)"
+  (tblfn--let-args (sell-qty-colspec-or-fun sell-amount-colspec-or-fun
+                                            cost-adjust-fun profit-adjust-fun
+                                            &key
+                                            result-type
+                                            calcopt
+                                            average-cost-unit)
+      rest-args
+    (let* ((total-quantity 0)
+           (total-cost 0)
+           (total-profit 0)
+           (buy-quantity-fun
+            (tblfn-make-row-to-value-function table qty-colspec-or-fun))
+           (buy-amount-fun
+            (tblfn-make-row-to-value-function table amount-colspec-or-fun))
+           (sell-quantity-fun
+            (tblfn-make-row-to-value-function table
+                                              (or sell-qty-colspec-or-fun
+                                                  qty-colspec-or-fun)))
+           (sell-amount-fun
+            (tblfn-make-row-to-value-function table
+                                              (or sell-amount-colspec-or-fun
+                                                  amount-colspec-or-fun)))
+           (buy-pred-fun
+            (if buy-pred
+                (tblfn-make-row-predicate-from-condition-spec table
+                                                              buy-pred nil nil)
+              (lambda (row)
+                (let ((buy-qty (funcall buy-quantity-fun row)))
+                  (or (and (stringp buy-qty)
+                           (not (string-empty-p buy-qty)))
+                      (and (numberp buy-qty)
+                           (not (zerop buy-qty)))))))))
+
+      (unless cost-adjust-fun (setq cost-adjust-fun #'identity))
+      (unless profit-adjust-fun (setq profit-adjust-fun #'identity))
+
+      (tblfn-mapc-body-row
+       table
+       (lambda (row)
+         (if (funcall buy-pred-fun row)
+             ;; Buy
+             (setq
+              total-cost
+              (tblfn-trade--add-cost total-cost (funcall buy-amount-fun row))
+              total-quantity
+              (tblfn-trade--add-quantity total-quantity
+                                         (funcall buy-quantity-fun row)))
+           ;; Sell
+           (let ((sell-quantity (funcall sell-quantity-fun row))
+                 (sell-amount (funcall sell-amount-fun row)))
+             (setq
+              total-profit
+              (tblfn-trade--add-profit
+               total-profit
+               (funcall profit-adjust-fun
+                        (tblfn-trade--compute-profit sell-amount sell-quantity
+                                                     total-cost
+                                                     total-quantity)))
+              total-cost
+              (funcall cost-adjust-fun
+                       (tblfn-trade--divide-cost total-cost total-quantity
+                                                 sell-quantity))
+              total-quantity
+              (tblfn-trade--sub-quantity total-quantity sell-quantity))))))
+
+      ;; calcopt => (calcopt calcopt calcopt calcopt)
+      (when (or (not (consp calcopt)) (symbolp (car calcopt)))
+        (setq calcopt (list calcopt calcopt calcopt calcopt)))
+
+      (list (tblfn-trade--convert-result total-quantity result-type
+                                         (car calcopt))
+            (tblfn-trade--convert-result total-cost result-type
+                                         (cadr calcopt))
+            (tblfn-trade--convert-result (tblfn-trade--compute-average-cost
+                                          total-cost total-quantity
+                                          average-cost-unit)
+                                         result-type (caddr calcopt))
+            (tblfn-trade--convert-result total-profit result-type
+                                         (cadddr calcopt))))))
+;; TEST: (tblfn-trade-result '(("Side" "Quantity" "Price") ("Buy" "12" "365.23") ("Buy" "20" "360.39") ("Buy" "18" "378.92") ("Buy" "23" "323.10") ("Sell" "7" "425.00") ("Sell" "13" "423.28") ("Buy" "24" "401.67")) '(equal Side "Buy") "Quantity" '(* (tblfn-to-number Quantity) (tblfn-to-number Price)) :calcopt 2) => ("77" "28402.38" "368.86" "1397.52")
+;; TEST: (tblfn-trade-result '(("Buy Quantity" "Buy Price" "Sell Quantity" "Sell Price") ("12" "365.23" "" "") ("20" "360.39" "" "") ("18" "378.92" "" "" ) ("23" "323.10" "" "") ("" "" "7" "425.00") ("" "" "13" "423.28") ("24" "401.67" "" "")) nil "Buy Quantity" '(* (tblfn-to-number Buy\ Quantity) (tblfn-to-number Buy\ Price)) "Sell Quantity" '(* (tblfn-to-number Sell\ Quantity) (tblfn-to-number Sell\ Price)) :calcopt 2) => ("77" "28402.38" "368.86" "1397.52")
+
+(defun tblfn-trade--add-cost (total-cost buy-amount)
+  ;; total-cost + buy-amount
+  (tblfn-math-frac-add total-cost (tblfn-to-math-number buy-amount)))
+
+(defun tblfn-trade--add-quantity (total-quantity buy-quantity)
+  ;; Note: It must also handle decimal quantities.
+  ;; total-quantity + buy-quantity
+  (tblfn-math-frac-add total-quantity (tblfn-to-math-number buy-quantity)))
+
+(defun tblfn-trade--compute-profit (sell-amount sell-quantity
+                                                total-cost total-quantity)
+  ;; sell-amount - (sell-quantity * total-cost / total-quantity))
+  (tblfn-math-frac-sub
+   (tblfn-to-math-number sell-amount)
+   ;; Total acquisition cost
+   (tblfn-math-frac-mul
+    (tblfn-to-math-number sell-quantity)
+    ;; Average acquisition cost
+    (tblfn-trade--compute-average-cost total-cost total-quantity))))
+
+(defun tblfn-trade--compute-average-cost (total-cost total-quantity
+                                                     &optional
+                                                     average-cost-unit)
+  ;; average-cost-unit * total-cost / total-quantity
+  (if (math-zerop total-quantity)
+      0
+    (tblfn-math-frac-div
+     (if average-cost-unit
+         (tblfn-math-frac-mul total-cost average-cost-unit)
+       total-cost)
+     total-quantity)))
+
+(defun tblfn-trade--add-profit (total-profit profit)
+  ;; total-profit + profit
+  (tblfn-math-frac-add total-profit (tblfn-to-math-number profit)))
+
+(defun tblfn-trade--sub-quantity (total-quantity sell-quantity)
+  ;; total-quantity - sell-quantity
+  (tblfn-math-frac-sub total-quantity (tblfn-to-math-number sell-quantity)))
+
+(defun tblfn-trade--divide-cost (total-cost total-quantity sell-quantity)
+  ;;  total-cost * (total-quantity - sell-quantity) / total-quantity
+  (tblfn-math-frac-div
+   (tblfn-math-frac-mul
+    (tblfn-math-frac-sub total-quantity (tblfn-to-math-number sell-quantity))
+    total-cost)
+   total-quantity))
+
+(defun tblfn-trade--convert-result (value result-type calcopt)
+  (tblfn-math-convert-value value result-type calcopt))
+
+
+(defun tblfn-trade-result-quantity (table
+                                    buy-pred
+                                    qty-colspec-or-fun
+                                    &rest rest-args)
+  "Compute the post-trade holding quantity from the trade history TABLE.
+
+See `tblfn-trade-result' for details.
+
+\n(fn TABLE BUY-PRED QTY-COLSPEC-OR-FUN &optional SELL-QTY-COLSPEC-OR-FUN &key RESULT-TYPE CALCOPT)"
+  (tblfn--let-args (sell-qty-colspec-or-fun &key result-type calcopt)
+      rest-args
+    (let* ((total-quantity 0)
+           (buy-quantity-fun
+            (tblfn-make-row-to-value-function table qty-colspec-or-fun))
+           (sell-quantity-fun
+            (tblfn-make-row-to-value-function table
+                                              (or sell-qty-colspec-or-fun
+                                                  qty-colspec-or-fun)))
+           (buy-pred-fun
+            (if buy-pred
+                (tblfn-make-row-predicate-from-condition-spec table
+                                                              buy-pred nil nil)
+              (lambda (row)
+                (let ((buy-qty (funcall buy-quantity-fun row)))
+                  (or (and (stringp buy-qty)
+                           (not (string-empty-p buy-qty)))
+                      (and (numberp buy-qty)
+                           (not (zerop buy-qty)))))))))
+
+      (tblfn-mapc-body-row
+       table
+       (lambda (row)
+         (if (funcall buy-pred-fun row)
+             ;; Buy
+             (setq total-quantity
+                   (tblfn-trade--add-quantity total-quantity
+                                              (funcall buy-quantity-fun row)))
+           ;; Sell
+           (setq total-quantity
+                 (tblfn-trade--sub-quantity total-quantity
+                                            (funcall sell-quantity-fun row))))))
+      (tblfn-trade--convert-result total-quantity result-type calcopt))))
+;; TEST: (tblfn-trade-result-quantity '(("Side" "Quantity" "Price") ("Buy" "12" "365.23") ("Buy" "20" "360.39") ("Buy" "18" "378.92") ("Buy" "23" "323.10") ("Sell" "7" "425.00") ("Sell" "13" "423.28") ("Buy" "24" "401.67")) '(equal Side "Buy") "Quantity" :calcopt 2) => "77"
+;; TEST: (tblfn-trade-result-quantity '(("Buy Quantity" "Buy Price" "Sell Quantity" "Sell Price") ("12" "365.23" "" "") ("20" "360.39" "" "") ("18" "378.92" "" "" ) ("23" "323.10" "" "") ("" "" "7" "425.00") ("" "" "13" "423.28") ("24" "401.67" "" "")) nil "Buy Quantity" "Sell Quantity" :calcopt 2) => "77"
+
+(defun tblfn-trade-result-cost (table
+                                buy-pred
+                                qty-colspec-or-fun amount-colspec-or-fun
+                                &rest rest-args)
+  "Compute the total acquisition cost for the remaining post-trade
+holding quantity from the trade history TABLE.
+
+See `tblfn-trade-result' for details.
+
+\n(fn TABLE BUY-PRED QTY-COLSPEC-OR-FUN AMOUNT-COLSPEC-OR-FUN &optional SELL-QTY-COLSPEC-OR-FUN SELL-AMOUNT-COLSPEC-OR-FUN COST-ADJUST-FUN &key RESULT-TYPE CALCOPT)"
+  (tblfn--let-args (sell-qty-colspec-or-fun
+                    sell-amount-colspec-or-fun
+                    cost-adjust-fun &key result-type calcopt)
+      rest-args
+    (cadr
+     (tblfn-trade-result table buy-pred qty-colspec-or-fun amount-colspec-or-fun
+                         sell-qty-colspec-or-fun sell-amount-colspec-or-fun
+                         cost-adjust-fun
+                         :result-type result-type
+                         :calcopt calcopt))))
+
+(defun tblfn-trade-result-average-cost (table
+                                        buy-pred
+                                        qty-colspec-or-fun amount-colspec-or-fun
+                                        &rest rest-args)
+  "Compute the average acquisition cost for the remaining post-trade
+holding quantity from the trade history TABLE.
+
+See `tblfn-trade-result' for details.
+
+\n(fn TABLE BUY-PRED QTY-COLSPEC-OR-FUN AMOUNT-COLSPEC-OR-FUN &optional SELL-QTY-COLSPEC-OR-FUN SELL-AMOUNT-COLSPEC-OR-FUN COST-ADJUST-FUN &key RESULT-TYPE CALCOPT AVERAGE-COST-UNIT)"
+  (tblfn--let-args (sell-qty-colspec-or-fun
+                    sell-amount-colspec-or-fun
+                    cost-adjust-fun &key result-type calcopt average-cost-unit)
+      rest-args
+    (caddr
+     (tblfn-trade-result table buy-pred qty-colspec-or-fun amount-colspec-or-fun
+                         sell-qty-colspec-or-fun sell-amount-colspec-or-fun
+                         cost-adjust-fun
+                         :result-type result-type
+                         :calcopt calcopt
+                         :average-cost-unit average-cost-unit))))
+
+(defun tblfn-trade-result-profit (table
+                                  buy-pred
+                                  qty-colspec-or-fun amount-colspec-or-fun
+                                  &rest rest-args)
+  "Compute the total realized profit resulting from the trades in
+the trade history TABLE.
+
+See `tblfn-trade-result' for details.
+
+\n(fn TABLE BUY-PRED QTY-COLSPEC-OR-FUN AMOUNT-COLSPEC-OR-FUN &optional SELL-QTY-COLSPEC-OR-FUN SELL-AMOUNT-COLSPEC-OR-FUN COST-ADJUST-FUN PROFIT-ADJUST-FUN &key RESULT-TYPE CALCOPT)"
+  (tblfn--let-args (sell-qty-colspec-or-fun sell-amount-colspec-or-fun
+                                            cost-adjust-fun profit-adjust-fun
+                                            &key
+                                            result-type
+                                            calcopt)
+      rest-args
+    (cadddr
+     (tblfn-trade-result table buy-pred qty-colspec-or-fun amount-colspec-or-fun
+                         sell-qty-colspec-or-fun sell-amount-colspec-or-fun
+                         cost-adjust-fun profit-adjust-fun
+                         :result-type result-type
+                         :calcopt calcopt))))
 
 
 ;;;; Org-mode Support
@@ -2937,23 +3271,6 @@ Return everything from the first non-ignorable row onwards."
 ;;;; Calc Integration
 
 
-(defvar tblfn-calc-result-number-type 'string)
-
-(defun tblfn-calc-result-convert (result &optional result-number-type)
-  (if (tblfn-number-string-p result)
-      (pcase (or result-number-type tblfn-calc-result-number-type)
-        ('number
-         (tblfn-to-number result))
-        ('float
-         (float (tblfn-to-number result)))
-        ('integer
-         (round (tblfn-to-number result)))
-        ('string
-         result)
-        (_
-         result))
-    result))
-
 (defun tblfn-calc-vector-fun (fun values &optional calcopt)
   (tblfn-calc-eval
    (concat "call("
@@ -2977,6 +3294,7 @@ Accepted values for CALCOPT:
   ;;       例えば文字列は`org-table-eval-formula'の書式指定と同じにしてみたり。
   (cond
    ((integerp calcopt)
+    ;; TODO: calc-internal-precも設定しないと大きな桁数を指定したときに12桁止まりになってしまう。
     `(calc-float-format (fix ,(- calcopt))))
    ((consp calcopt)
     calcopt)
@@ -2987,12 +3305,186 @@ Accepted values for CALCOPT:
 
 (defun tblfn-calc-eval (calc-expr-string
                         &optional calcopt result-type)
-  (tblfn-calc-result-convert
+  (unless calcopt (setq calcopt tblfn-calcopt-default))
+  (tblfn-math-convert-value
    (calc-eval
     (cons
      calc-expr-string
-     (tblfn-calcopt-parse (or calcopt tblfn-calcopt-default))))
-   result-type))
+     (tblfn-calcopt-parse calcopt))
+    'raw)
+   result-type
+   calcopt))
+
+;; Math Functions
+
+(defun tblfn-string-to-math-number (string)
+  "Convert STRING to a math number."
+  (math-read-number (string-replace "," "" string)))
+;; TEST: (tblfn-string-to-math-number "123,456") => 123456
+;; TEST: (tblfn-string-to-math-number "123.456") => (float 123456 -3)
+;; TEST: (tblfn-string-to-math-number "123.4567890123456789012345678901234567890123456789") => (float 123456789012 -9)
+;; TEST: (tblfn-string-to-math-number "2:3") => (frac 2 3)
+
+(defun tblfn-to-math-number (object &optional noerror default)
+  "Convert OBJECT to a math number.
+
+Signals an error if OBJECT cannot be interpreted as a number.
+When NOERROR is non-nil, returns DEFAULT instead of signaling an error.
+
+When OBJECT is a string, `tblfn-number-string-p' is used to determine
+whether it can be interpreted as a number."
+  (cond
+   ((integerp object) object)
+   ((floatp object)
+    ;; `org-babel-execute:calc'が使っている方法。
+    ;; 本当は仮数部と指数部に分けて分数にすべきかもしれないが
+    ;; かえって誤差が出るかもしれない。
+    (math-read-number (number-to-string object)))
+   ((stringp object)
+    (or (tblfn-string-to-math-number object)
+        (if noerror
+            default
+          (error "String cannot be recognized as a number: `%s'" object))))
+   ((and (consp object) (memq (car object) '(float frac)))
+    object)
+   (t
+    (unless noerror
+      (error "Type cannot be converted to a math number: `%s'" object))
+    default)))
+;; TEST: (tblfn-to-math-number 123) => 123
+;; TEST: (tblfn-to-math-number "123") => 123
+;; TEST: (tblfn-to-math-number 123456.78) => (float 12345678 -2)
+;; TEST: (tblfn-to-math-number "123456.78") => (float 12345678 -2)
+;; TEST: (tblfn-to-math-number "123456.78a") => error
+;; TEST: (tblfn-to-math-number "123456.78a") => error
+;; TEST: (tblfn-to-math-number " \t-12345.6e-7 \t") => (float -123456 -8)
+;; TEST: (tblfn-to-math-number 'abc) => error
+;; TEST: (tblfn-to-math-number "") => error
+;; TEST: (tblfn-to-math-number "" t) => nil
+;; TEST: (tblfn-to-math-number "" t 0) => 0
+;; TEST: (tblfn-to-math-number (math-read-number "123456.78")) => (float 12345678 -2)
+
+(defun tblfn-math-number-to-decimal-string (x &optional calcopt)
+  "Convert the Calc number X to an integer or decimal string.
+
+X must be a value in Calc's internal format, or a Lisp integer.
+
+Integers are not given a decimal point.
+Fractions are converted to decimals.
+
+For CALCOPT, see `tblfn-calcopt-parse'."
+  (tblfn-math-convert-value x 'decimal-string calcopt))
+;; TEST: (tblfn-math-number-to-decimal-string 0) => "0"
+;; TEST: (tblfn-math-number-to-decimal-string 123) => "123"
+;; TEST: (tblfn-math-number-to-decimal-string (math-read-number "123.456")) => "123.456"
+;; TEST: (tblfn-math-number-to-decimal-string '(frac 2 3) -4) => "0.6667"
+
+(defun tblfn-math-convert-value (math-value &optional dst-type calcopt)
+  "Convert the Calc value MATH-VALUE to DST-TYPE.
+
+MATH-VALUE is a value in Calc's internal format, such as the value
+returned when `calc-eval' is called with its separator argument set to
+`raw', or the value returned when directly calling a function whose name
+begins with math- or calc-.
+
+DST-TYPE can be one of the following symbols:
+  - `string' | `nil' : the default, general-purpose string
+  - `decimal-string' : an integer or decimal string
+  - `calc-string' : a string as produced by Calc
+  - `calc' : Calc's internal format (MATH-VALUE is returned as is)
+  - `integer' | `lisp-integer' : a Lisp integer
+  - `float' | `lisp-float' : a Lisp floating-point number
+  - `number' | `lisp-number' : a Lisp number (integer or floating-point)
+
+For CALCOPT, see `tblfn-calcopt-parse'."
+  (if (stringp math-value)
+      math-value ;; calc-evalが返した文字列がここに渡されてしまったときのために
+    (let ((calc-props (tblfn-calcopt-parse calcopt)))
+      (pcase dst-type
+        ;; Default string
+        ((or 'string 'nil)
+         ;; 2 means fraction
+         (calc-eval (cons "if(typeof($)==2,float($),$)" calc-props)
+                    nil math-value))
+        ;; Decimal string
+        ('decimal-string
+         (calc-eval (cons "if(integer($),$,float($))" calc-props)
+                    'num math-value))
+        ;; Calc string format
+        ('calc-string
+         (calc-eval (cons "$" calc-props) nil math-value))
+        ;; Calc raw value
+        ('calc
+         math-value)
+        ;; Lisp integer
+        ((or 'integer 'lisp-integer)
+         (calc-eval (cons "round($)" calc-props) 'rawnum math-value))
+        ;; Lisp float
+        ((or 'float 'lisp-float)
+         ;; TODO: 有効桁を増やすべき
+         (let ((str (calc-eval (cons "float($)" calc-props) 'num math-value)))
+           ;; TODO: Check error?
+           (float (string-to-number str))))
+        ;; Lisp number
+        ((or 'number 'lisp-number)
+         ;; TODO: 有効桁を増やすべき
+         (let ((str (calc-eval (cons "if(integer($),$,float($))" calc-props)
+                               'num math-value)))
+           ;; TODO: Check error?
+           (string-to-number str)))
+        ;; Unknown
+        (_
+         (error "Undefined dst-type %s" dst-type))))))
+;; TEST: (tblfn-math-convert-value 12345 'string) => "12345"
+;; TEST: (tblfn-math-convert-value (math-read-number "12345.6789012345678901") 'string -3) => "12345.679"
+;; TEST: (tblfn-math-convert-value (math-make-frac 22 7) 'string -3) => "3.143"
+;; TEST: (tblfn-math-convert-value 12345 'calc) => 12345
+;; TEST: (tblfn-math-convert-value (math-read-number "12345.6789012345678901") 'calc) => (float 123456789012 -7)
+;; TEST: (tblfn-math-convert-value (math-make-frac 22 7) 'calc) => (frac 22 7)
+;; TEST: (tblfn-math-convert-value 12345 'calc-string) => "12345"
+;; TEST: (tblfn-math-convert-value (math-read-number "12345.6789012345678901") 'calc-string -3) => "12345.679"
+;; TEST: (tblfn-math-convert-value (math-make-frac 22 7) 'calc-string -3) => "22:7"
+;; TEST: (tblfn-math-convert-value 12345 'lisp-integer) => 12345
+;; TEST: (tblfn-math-convert-value (math-read-number "12345.6789012345678901") 'lisp-integer) => 12346
+;; TEST: (tblfn-math-convert-value (math-make-frac 22 7) 'lisp-integer) => 3
+;; TEST: (tblfn-math-convert-value 12345 'lisp-float) => 12345.0
+;; TEST: (tblfn-math-convert-value (math-read-number "12345.6789012345678901") 'lisp-float -3) => 12345.679
+;; TEST: (tblfn-math-convert-value (math-make-frac 22 7) 'lisp-float -3) => 3.143
+;; TEST: (tblfn-math-convert-value 12345 'lisp-number) => 12345
+;; TEST: (tblfn-math-convert-value (math-read-number "12345.6789012345678901") 'lisp-number -3) => 12345.679
+;; TEST: (tblfn-math-convert-value (math-make-frac 22 7) 'lisp-number -3) => 3.143
+
+(defun tblfn-math-to-frac (x)
+  "Convert a Calc value X to a fraction or integer."
+  (cond
+   ((integerp x) x)
+   ((eq (car-safe x) 'frac) x)
+   ((eq (car-safe x) 'float)
+    (let ((mant (cadr x))
+          (xpon (caddr x)))
+      (if (>= xpon 0)
+          (* mant (expt 10 xpon))
+        (math-make-frac mant (expt 10 (- xpon))))))
+   (t
+    (error "Unsupported type: %s" x))))
+;; TEST: (tblfn-math-to-frac 0) => 0
+;; TEST: (tblfn-math-to-frac 123) => 123
+;; TEST: (tblfn-math-to-frac (math-read-number "123.456")) => (frac 15432 125)
+;; TEST: (tblfn-math-to-frac (math-read-number "12300000000.0")) => 12300000000
+
+(defun tblfn-math-frac-div (a b)
+  (if (and (math-integerp a) (math-integerp b))
+      (math-make-frac a b)
+    (math-div (tblfn-math-to-frac a) (tblfn-math-to-frac b))))
+
+(defun tblfn-math-frac-add (a b)
+  (math-add (tblfn-math-to-frac a) (tblfn-math-to-frac b)))
+
+(defun tblfn-math-frac-sub (a b)
+  (math-sub (tblfn-math-to-frac a) (tblfn-math-to-frac b)))
+
+(defun tblfn-math-frac-mul (a b)
+  (math-mul (tblfn-math-to-frac a) (tblfn-math-to-frac b)))
 
 
 ;;;; String/Number Conversion

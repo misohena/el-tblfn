@@ -322,20 +322,45 @@ Additional examples can be found in [[file:example/example.org][example/example.
   - tblfn-aggregate
   - tblfn-make-row-to-value-function
   - tblfn--aggregate-default-column-name
+  - tblfn-group-body-rows-by
   - tblfn-count-by
 - Table Calculation
   - tblfn-add-percentage-column
   - tblfn-add-percentage-column--calc
   - tblfn-add-footer-sum
   - tblfn-add-footer-vcalc
+- Inventory Valuation (Moving-Average Cost)
+  - tblfn-trade-result
+  - tblfn-trade--add-cost
+  - tblfn-trade--add-quantity
+  - tblfn-trade--compute-profit
+  - tblfn-trade--compute-average-cost
+  - tblfn-trade--add-profit
+  - tblfn-trade--sub-quantity
+  - tblfn-trade--divide-cost
+  - tblfn-trade--convert-result
+  - tblfn-trade-result-quantity
+  - tblfn-trade-result-cost
+  - tblfn-trade-result-average-cost
+  - tblfn-trade-result-profit
 - Org-mode Support
   - tblfn-use-hlines-p
   - tblfn-for-org-p
   - tblfn-org-invalid-row-p
   - tblfn-skip-org-invalid-rows
 - Calc Integration
-  - tblfn-calc-result-convert
   - tblfn-calc-vector-fun
+  - tblfn-calcopt-parse
+  - tblfn-calc-eval
+  - tblfn-string-to-math-number
+  - tblfn-to-math-number
+  - tblfn-math-number-to-decimal-string
+  - tblfn-math-convert-value
+  - tblfn-math-to-frac
+  - tblfn-math-frac-div
+  - tblfn-math-frac-add
+  - tblfn-math-frac-sub
+  - tblfn-math-frac-mul
 - String/Number Conversion
   - tblfn-number-string-p
   - tblfn-string-to-number
