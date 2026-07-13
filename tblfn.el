@@ -2651,7 +2651,7 @@ Example:
                for value-colspec = (pop positional-args)
                for value-vfun = (or (pop positional-args) vfun)
                for value-colname = (pop positional-args)
-               for value-calcopt = (plist-get keyword-args :calcopt)
+               for value-calcopt = (or (plist-get keyword-args :calcopt) calcopt)
                for value-extractor = (tblfn-make-row-to-value-function
                                       table value-colspec)
                collect (list value-colspec value-extractor value-vfun
