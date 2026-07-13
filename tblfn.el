@@ -2803,15 +2803,20 @@ the footer row must be a valid number.
 Even when CHANGE-FOOTER is non-nil, the denominator for percentages
 \(the sum of values in the VALUE-COLSPEC column) is limited to the body.
 
-For :calcopt, see `tblfn-calcopt-parse'.
+For CALCOPT(:calcopt), see `tblfn-calcopt-parse'.
 The default is \\='(calc-float-format (fix -2)).
 When CALCOPT is a natural number, it is equivalent to
 specifying \\='(calc-float-format (fix -CALCOPT)).
 When it is 0, the result will be an integer string.
+
+SUFFIX(:suffix) is a string appended to the end of the resulting value.
+When nil, nothing is appended.  When t, the default unit (%) is appended.
 \n(fn TABLE VALUE-COLSPEC PERCENTAGE-COLNAME \
-&optional CHANGE-FOOTER &key CALCOPT)"
-  (tblfn--let-args (change-footer calcopt-old &key calcopt)
+&optional CHANGE-FOOTER &key CALCOPT SUFFIX)"
+  (tblfn--let-args (change-footer calcopt-old &key calcopt suffix)
       rest-args
+    (when (eq suffix t) (setq suffix "%"))
+
     (let ((total (tblfn-column-sum table value-colspec))
           (value-col (tblfn-column-index table value-colspec)))
       (tblfn-add-header-row
@@ -2831,9 +2836,14 @@ When it is 0, the result will be an integer string.
                 row)
                ((tblfn-data-row-p row)
                 (append row
-                        (list (tblfn-add-percentage-column--calc
-                               (nth value-col row) total
-                               (or calcopt calcopt-old)))))
+                        (list
+                         (let ((percentage
+                                (tblfn-add-percentage-column--calc
+                                 (nth value-col row) total
+                                 (or calcopt calcopt-old))))
+                           (if (and (stringp percentage) suffix)
+                               (concat percentage suffix)
+                             percentage)))))
                (t
                 row)))
             result)
@@ -2847,6 +2857,7 @@ When it is 0, the result will be an integer string.
 ;; TEST: (tblfn-add-percentage-column '(("name" "class" "price") hline ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1") hline ("" "" "")) "price" "%") => (("name" "class" "price" "%") hline ("apple" "fruits" "12.3" "7.13") ("onion" "vegetables" "34.1" "19.77") ("banana" "fruits" "23.4" "13.57") ("orange" "fruits" "34.5" "20.00") ("cabbage" "vegetables" "23.1" "13.39") ("tomato" "vegetables" "45.1" "26.14") hline ("" "" ""))
 ;; TEST: (tblfn-add-percentage-column '(("name" "class" "price") hline ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1") ("banana" "fruits" "23.4") ("orange" "fruits" "34.5") ("cabbage" "vegetables" "23.1") ("tomato" "vegetables" "45.1") hline ("" "" "172.5")) "price" "%" t) => (("name" "class" "price" "%") hline ("apple" "fruits" "12.3" "7.13") ("onion" "vegetables" "34.1" "19.77") ("banana" "fruits" "23.4" "13.57") ("orange" "fruits" "34.5" "20.00") ("cabbage" "vegetables" "23.1" "13.39") ("tomato" "vegetables" "45.1" "26.14") hline ("" "" "172.5" "100.00"))
 ;; TEST: (tblfn-add-percentage-column '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1")) "price" "%" nil 0) => (("name" "class" "price" "%") ("apple" "fruits" "12.3" "27") ("onion" "vegetables" "34.1" "73"))
+;; TEST: (tblfn-add-percentage-column '(("name" "class" "price") ("apple" "fruits" "12.3") ("onion" "vegetables" "34.1")) "price" "%" nil 0 :suffix "％") => (("name" "class" "price" "%") ("apple" "fruits" "12.3" "27％") ("onion" "vegetables" "34.1" "73％"))
 
 (defvar tblfn-default-percentage-calc-properties
   '(calc-float-format (fix -2)))
