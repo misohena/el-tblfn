@@ -662,28 +662,51 @@ Non-data rows such as hlines are preserved as-is."
 
 ;;;;; Column Operations
 
-(defun tblfn-column-values (table colspec)
+(defun tblfn-column-values (table colspec &optional empty-value)
   "Return a list of all field values in the column specified by COLSPEC.
-Only rows in TABLE's body are included (header and footer rows are excluded)."
+Only rows in TABLE's body are included (header and footer rows are excluded).
+
+EMPTY-VALUE specifies how to handle a field whose value is empty
+(i.e., an empty string or nil).
+- nil : The field is not included in the resulting list (the list will
+        have that many fewer elements).
+- t   : The field's value is included in the resulting list as-is.
+- otherwise : Empty fields are replaced with the value of EMPTY-VALUE."
   (let ((col-index (tblfn-column-index table colspec))
         (result nil))
     (tblfn-mapc-body-row
      table
      (lambda (row)
-       (push (nth col-index row) result)))
+       (let ((value (nth col-index row)))
+         (if (or (equal value "") (null value))
+             (pcase empty-value
+               ('nil)
+               ('t (push value result))
+               (_ (push empty-value result)))
+           (push value result)))))
     (nreverse result)))
 ;; TEST: (tblfn-column-values '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (10 11 12)) "B") => (2 5 8)
+;; TEST: (tblfn-column-values '(("A" "B" "C") hline (1 2 3) (4 "" 6) (7 8 9) (10 nil 12)  (13 14 15) hline (10 11 12)) "B") => (2 8 14)
+;; TEST: (tblfn-column-values '(("A" "B" "C") hline (1 2 3) (4 "" 6) (7 8 9) (10 nil 12)  (13 14 15) hline (10 11 12)) "B" t) => (2 "" 8 nil 14)
+;; TEST: (tblfn-column-values '(("A" "B" "C") hline (1 2 3) (4 "" 6) (7 8 9) (10 nil 12)  (13 14 15) hline (10 11 12)) "B" 0) => (2 0 8 0 14)
 
 (defun tblfn-column-sum (table colspec &rest rest-args)
   "Return the sum of all values in the column specified by COLSPEC.
 Only rows in TABLE's body are included (header and footer rows are excluded).
 
-For :calcopt, see `tblfn-calcopt-parse'.
-\n(fn TABLE COLSPEC &key CALCOPT)"
-  (tblfn--let-args (&key calcopt)
+For CALCOPT(:calcopt), see `tblfn-calcopt-parse'.
+
+EMPTY-VALUE(:empty-value) specifies how to handle a field whose value is
+empty (i.e., an empty string or nil).
+- nil : The field is excluded from the calculation.
+- t   : The calculation is attempted using the field value as-is.
+- otherwise : Empty fields are replaced with the value of EMPTY-VALUE.
+\n(fn TABLE COLSPEC &key CALCOPT EMPTY-VALUE)"
+  (tblfn--let-args (&key calcopt empty-value)
       rest-args
-    (tblfn-column-vcalc table colspec "vsum" :calcopt calcopt)))
+    (tblfn-column-vcalc table colspec "vsum" :calcopt calcopt :empty-value empty-value)))
 ;; TEST: (tblfn-column-sum '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (10 11 12)) "C") => "18"
+;; TEST: (tblfn-column-sum '(("A" "B" "C") hline (1 2 nil) (4 5 6) (7 8 "") hline (10 11 12)) "C" :empty-value 10) => "26"
 
 (defun tblfn-column-vcalc (table colspec vfun &rest rest-args)
   "Return the result of applying VFUN to the column specified by COLSPEC.
@@ -691,16 +714,24 @@ For :calcopt, see `tblfn-calcopt-parse'.
 VFUN is a Calc vector function name (string), such as \"vsum\",
 \"vmean\", \"vmax\", \"<round(vmean(#), 2)>\", etc.
 
-For :calcopt, see `tblfn-calcopt-parse'.
+For CALCOPT(:calcopt), see `tblfn-calcopt-parse'.
+
+EMPTY-VALUE(:empty-value) specifies how to handle a field whose value is
+empty (i.e., an empty string or nil).
+- nil : The field is excluded from the calculation.
+- t   : The calculation is attempted using the field value as-is.
+- otherwise : Empty fields are replaced with the value of EMPTY-VALUE.
 
 Only rows in TABLE's body are included (header and footer rows are excluded).
-\n(fn TABLE COLSPEC VFUN &key CALCOPT)"
-  (tblfn--let-args (&key calcopt)
+\n(fn TABLE COLSPEC VFUN &key CALCOPT EMPTY-VALUE)"
+  (tblfn--let-args (&key calcopt empty-value)
       rest-args
     (tblfn-calc-vector-fun (or vfun "vsum")
-                           (tblfn-column-values table colspec)
+                           (tblfn-column-values table colspec empty-value)
                            calcopt)))
 ;; TEST: (tblfn-column-vcalc '(("A" "B" "C") hline (1 2 3) (4 5 6) (7 8 9) hline (10 11 12)) "C" "vmean") => "6"
+;; TEST: (tblfn-column-vcalc '(("A" "B" "C") hline (1 2 3) (4 5 "") (7 8 9) (10 11 nil) hline (10 11 12)) "C" "vcount") => "2"
+;; TEST: (tblfn-column-vcalc '(("A" "B" "C") hline (1 2 3) (4 5 "") (7 8 9) (10 11 nil) hline (10 11 12)) "C" "vcount" :empty-value 0) => "4"
 
 (defun tblfn-select-columns (table &rest colspecs)
   "Return a new table containing only the columns specified by COLSPECS.
@@ -2829,13 +2860,26 @@ When it is 0, the result will be an integer string.
     (tblfn-calcopt-parse calcopt)
     tblfn-default-percentage-calc-properties)))
 
-(defun tblfn-add-footer-sum (table &rest sum-colspecs)
+(defun tblfn-add-footer-sum (table &rest rest-args)
   "Add a footer row with sum values to TABLE.
 
-SUM-COLSPECS is a list specifying the columns to add sum values to."
-  (apply #'tblfn-add-footer-vcalc table "vsum" sum-colspecs))
+SUM-COLSPECS is a list specifying the columns to add sum values to.
 
-(defun tblfn-add-footer-vcalc (table vfun &rest calc-colspecs)
+For CALCOPT(:calcopt), see `tblfn-calcopt-parse'.
+
+EMPTY-VALUE(:empty-value) specifies how to handle a field whose value is
+empty (i.e., an empty string or nil).
+- nil : The field is excluded from the calculation.
+- t   : The calculation is attempted using the field value as-is.
+- otherwise : Empty fields are replaced with the value of EMPTY-VALUE.
+\n(fn TABLE &rest sum-colspecs &key CALCOPT EMPTY-VALUE)"
+  (tblfn--let-args (&rest sum-colspecs &key calcopt empty-value)
+      rest-args
+    (apply #'tblfn-add-footer-vcalc table "vsum"
+           (append sum-colspecs
+                   (list :calcopt calcopt :empty-value empty-value)))))
+
+(defun tblfn-add-footer-vcalc (table vfun &rest rest-args)
   "Add a footer row with calculated values to TABLE.
 
 VFUN is a Calc vector function name (string), such as \"vsum\",
@@ -2844,21 +2888,35 @@ VFUN is a Calc vector function name (string), such as \"vsum\",
 CALC-COLSPECS is a list specifying the columns to calculate values for.
 The calculated values are placed in the corresponding columns of the
 footer row.  Other columns in the footer row are filled with empty
-strings."
-  (when (stringp calc-colspecs)
-    (setq calc-colspecs (list calc-colspecs)))
-  (let ((footer-row (make-list (tblfn-column-count table) "")))
-    (dolist (colspec calc-colspecs)
-      (let ((col (tblfn-column-index table colspec))
-            (result (tblfn-column-vcalc table colspec vfun)))
-        (setf (nth col footer-row) result)))
+strings.
 
-    (append table
-            (if (memq 'hline table) ;; (tblfn-use-hlines-p)
-                (list 'hline footer-row)
-              ;; tableにhlineが一つも無いなら、hlineを追加するとそれは
-              ;; ヘッダー区切りになってしまうので入れない。
-              (list footer-row)))))
+For CALCOPT(:calcopt), see `tblfn-calcopt-parse'.
+
+EMPTY-VALUE(:empty-value) specifies how to handle a field whose value is
+empty (i.e., an empty string or nil).
+- nil : The field is excluded from the calculation.
+- t   : The calculation is attempted using the field value as-is.
+- otherwise : Empty fields are replaced with the value of EMPTY-VALUE.
+
+\n(fn TABLE &rest calc-colspecs &key CALCOPT)"
+  (tblfn--let-args (&rest calc-colspecs &key calcopt empty-value)
+      rest-args
+    (when (stringp calc-colspecs)
+      (setq calc-colspecs (list calc-colspecs)))
+    (let ((footer-row (make-list (tblfn-column-count table) "")))
+      (dolist (colspec calc-colspecs)
+        (let ((col (tblfn-column-index table colspec))
+              (result (tblfn-column-vcalc table colspec vfun
+                                          :calcopt calcopt
+                                          :empty-value empty-value)))
+          (setf (nth col footer-row) result)))
+
+      (append table
+              (if (memq 'hline table) ;; (tblfn-use-hlines-p)
+                  (list 'hline footer-row)
+                ;; tableにhlineが一つも無いなら、hlineを追加するとそれは
+                ;; ヘッダー区切りになってしまうので入れない。
+                (list footer-row))))))
 
 ;; TODO: defun tblfn-add-column-calc table
 
