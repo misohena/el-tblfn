@@ -1006,6 +1006,8 @@ counting only valid data rows.
 Headers, footers, hlines, special rows to be ignored for org-mode, and
 other non-list elements are ignored, and only data rows in the body are
 passed to FUNCTION."
+  (setq function (tblfn-make-row-to-value-function table function))
+
   (when-let* ((table-wo-header (tblfn-after-header table)))
     (tblfn-mapc-body-row--after-header table-wo-header function)))
 
@@ -1047,6 +1049,7 @@ the list returned by this function.
 Headers, footers, hlines, special rows to be ignored for org-mode, and
 other non-list elements are ignored, and only data rows in the body are
 passed to FUNCTION."
+  (setq function (tblfn-make-row-to-value-function table function))
   (let ((result nil))
     (tblfn-mapc-body-row
      table
