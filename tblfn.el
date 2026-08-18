@@ -3657,29 +3657,6 @@ representations of numbers while preserving non-numeric values."
 ;;;; CSV I/O
 
 
-(autoload 'csv-parse-current-row "csv-mode")
-
-(defun tblfn-read-csv-file (file &optional keep-empty-row-column)
-  "Read a CSV FILE.
-
-Empty rows in the CSV file become nil by default, but when
-KEEP-EMPTY-ROW-COLUMN is non-nil, they become a list containing
-a single empty string."
-  (with-temp-buffer
-    (insert-file-contents file)
-    (let (lines)
-      (while (not (eobp))
-        (if (and (not keep-empty-row-column) (eolp))
-            ;; Make empty rows simply nil.
-            ;; csv-parse-current-row makes them (""), which is not bad,
-            ;; but since there are many places that want to check for
-            ;; empty rows and it's rare for empty rows to be valid data,
-            ;; we use nil.
-            (push nil lines)
-          (push (csv-parse-current-row) lines))
-        (forward-line))
-      (nreverse lines))))
-
 (defun tblfn-write-csv-file (table file)
   "Write TABLE to FILE in CSV format."
   (with-temp-file file
@@ -3694,6 +3671,92 @@ a single empty string."
                  row ",")
                 "\n"))))
   table)
+
+(defun tblfn-read-csv-file (file &rest option-plist)
+  "Read a CSV FILE.
+
+OPTION-PLIST is a property list specifying read options, given as
+alternating keywords and values. The valid properties are as follows:
+
+  :blank-line-as-nil <boolean>
+
+    When non-nil, treat a blank line as a row with zero
+    fields (i.e. ()=nil).
+    By default, a blank line becomes a row with one field
+    containing an empty string (i.e. (\"\"))."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (apply #'tblfn-read-csv-buffer option-plist)))
+
+(defun tblfn-read-csv-buffer (&rest option-plist)
+  "Read CSV data from the current buffer point position.
+
+OPTION-PLIST is a property list specifying read options, given as
+alternating keywords and values. The valid properties are as follows:
+
+  :blank-line-as-nil <boolean>
+
+    When non-nil, treat a blank line as a row with zero
+    fields (i.e. ()=nil).
+    By default, a blank line becomes a row with one field
+    containing an empty string (i.e. (\"\"))."
+  (let ((blank-line-as-nil (plist-get option-plist :blank-line-as-nil))
+        lines)
+    (while (not (eobp))
+      (if (and blank-line-as-nil (eolp))
+          ;; Treat empty lines simply as nil.
+          ;; Under RFC 4180, an empty line is a record containing a
+          ;; single field with an empty string (i.e., ("")); however,
+          ;; since some CSV files use empty lines as data delimiters,
+          ;; it is convenient to treat them as records with zero
+          ;; fields (i.e., nil).
+          (progn
+            (push nil lines)
+            (tblfn-read-line-break))
+        (push (tblfn-read-csv-record) lines)))
+    (nreverse lines)))
+;; TEST: (with-temp-buffer (tblfn-read-csv-buffer)) => nil
+;; TEST: (with-temp-buffer (save-excursion (insert "z")) (tblfn-read-csv-buffer)) => (("z"))
+;; TEST: (with-temp-buffer (save-excursion (insert "\n")) (tblfn-read-csv-buffer)) => ((""))
+;; TEST: (with-temp-buffer (save-excursion (insert "\n")) (tblfn-read-csv-buffer :blank-line-as-nil t)) => (nil)
+;; TEST: (with-temp-buffer (save-excursion (insert "ab,cd,ef\n0,1,2\n3,4,5")) (tblfn-read-csv-buffer)) => (("ab" "cd" "ef") ("0" "1" "2") ("3" "4" "5"))
+;; TEST: (with-temp-buffer (save-excursion (insert "\"ab cd ef\",\"gh \"\"ij\"\" kl\",\"\"\"mn\"\"op\"\"\"\"qr\"\"\"\n0,1,2")) (tblfn-read-csv-buffer)) => (("ab cd ef" "gh \"ij\" kl" "\"mn\"op\"\"qr\"") ("0" "1" "2"))
+;; TEST: (with-temp-buffer (save-excursion (insert ",,,\n,,\n,\n\n")) (tblfn-read-csv-buffer)) => (("" "" "" "") ("" "" "") ("" "") (""))
+
+(defun tblfn-read-csv-record ()
+  (prog1 (cl-loop collect (tblfn-read-csv-field)
+                  while (eq (char-after) ?,)
+                  do (forward-char))
+    (tblfn-read-line-break)))
+
+(defconst tblfn-csv-field-regexp
+  (concat
+   ;; EOFIELD := [,\r\n] | EOB
+   ;; NON-EOFIELD := [^,\r\n]
+   ;; NON-DQEOFIELD := [^\",\r\n]
+   ;; escaped := DQUOTE (NON-DQUOTE | 2DQUOTE)* DQUOTE NON-EOFIELD*
+   ;; non-escaped := ( NON-DQEOFIELD NON-EOFIELD* | )
+   "\\(?:\"\\(\\(?:\"\"\\|[^\"]\\)*\\)\"\\([^,\r\n]*\\)\\)\\|"
+   "\\([^,\r\n]*\\)"))
+
+(defun tblfn-read-csv-field ()
+  (looking-at tblfn-csv-field-regexp) ;; Always matches
+  (prog1
+      (if (match-beginning 1)
+          (let ((quoted (match-string-no-properties 1))
+                (after-quote (match-string-no-properties 2)))
+            (concat (replace-regexp-in-string "\"\"" "\"" quoted t t)
+                    after-quote))
+        (match-string-no-properties 3))
+    (goto-char (match-end 0))))
+;; TEST: (with-temp-buffer (insert "\"\nab\ncd\nef\"ghij,13\" laptop\n") (goto-char (point-min)) (list (tblfn-read-csv-field) (progn (forward-char) (tblfn-read-csv-field)))) => ("\nab\ncd\nefghij" "13\" laptop")
+
+(defun tblfn-read-line-break ()
+  (pcase (char-after)
+    (?\n (forward-char))
+    (?\r (forward-char)
+         (when (eq (char-after) ?\n)
+           (forward-char)))))
 
 ;; TODO: defun tblfn-insert-csv-file table file row-index
 

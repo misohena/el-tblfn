@@ -368,8 +368,12 @@ Additional examples can be found in [[file:example/example.org][example/example.
   - tblfn-to-number-forced
   - tblfn-to-number-if-possible
 - CSV I/O
-  - tblfn-read-csv-file
   - tblfn-write-csv-file
+  - tblfn-read-csv-file
+  - tblfn-read-csv-buffer
+  - tblfn-read-csv-record
+  - tblfn-read-csv-field
+  - tblfn-read-line-break
 - S-expression Utilities
   - tblfn--expand-symbol-references-in-sexp
 - List Utilities
