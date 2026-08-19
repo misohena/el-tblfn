@@ -210,3 +210,12 @@ csv-modeはEmacs標準ではなかったorz
 RFC 4180の条件は押さえつつ、フィールド解析中のイレギュラーについては:
 - 通常解析中の二重引用符はそのまま二重引用符一文字として扱う。(今の時代にこのようなデータがあるということは二重引用符を考慮していないプログラムによるものである可能性が高いので)
 - 二重引用符解析中の単独二重引用符は二重引用符解析を終わらせ、その後は通常解析でフィールド終端までの文字列をフィールド値に含める。(回復が早い)
+
+** DONE Emacs 31で発生する警告・互換性問題に対応
+CLOSED: [2026-08-20 Thu 08:49]
+
+- obsolete:
+  - cl-member-if => (NEW)member-if => (Add)tblfn-member-if
+- deprecated:
+  - cl-incf => (NEW)incf => tblfn-incf
+  - cl-decf => (NEW)decf => tblfn-decf

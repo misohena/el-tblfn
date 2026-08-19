@@ -34,6 +34,24 @@
 
 ;;;; Macros
 
+;;;;; Compatibility Macros
+
+(defmacro tblfn-member-if (pred list)
+  (if (and (>= emacs-major-version 31) (fboundp 'member-if))
+      `(member-if ,pred ,list)
+    `(cl-member-if ,pred ,list)))
+
+(defmacro tblfn-incf (place &optional delta)
+  (if (and (>= emacs-major-version 31) (fboundp 'incf))
+      `(incf ,place ,delta)
+    `(cl-incf ,place ,delta)))
+
+(defmacro tblfn-decf (place &optional delta)
+  (if (and (>= emacs-major-version 31) (fboundp 'decf))
+      `(decf ,place ,delta)
+    `(cl-decf ,place ,delta)))
+
+
 ;;;;; Pipeline Macro
 
 (defmacro tblfn-process (table &rest processes)
@@ -135,7 +153,7 @@ specified with keywords."
 
   (let ((args-var (gensym "args")))
     `(let* ((,args-var ,expr)
-            (keyword-args (cl-member-if #'keywordp ,args-var))
+            (keyword-args (tblfn-member-if #'keywordp ,args-var))
             (positional-args (cl-ldiff ,args-var keyword-args)))
        ;; (message "keyword-args=%s positional-args=%s" keyword-args positional-args)
        (let (,@(tblfn--let-args-make-bindings arglist))
@@ -1024,7 +1042,7 @@ passed to FUNCTION."
             (let ((row (pop processed)))
               (when (tblfn-data-row-p row)
                 (funcall function row)
-                (cl-incf tblfn-current-row-index))))
+                (tblfn-incf tblfn-current-row-index))))
           (setq last-hline-cons-cell rest
                 processed (cdr rest)))
         (setq rest (cdr rest)))
@@ -1034,7 +1052,7 @@ passed to FUNCTION."
         (dolist (row table-wo-header)
           (when (tblfn-data-row-p row)
             (funcall function row)
-            (cl-incf tblfn-current-row-index))))
+            (tblfn-incf tblfn-current-row-index))))
       ;; Return footer hline
       last-hline-cons-cell)))
 
@@ -1071,11 +1089,11 @@ Hlines and org-mode special rows are not counted."
     (dolist (row (tblfn-after-header table))
       (cond
        ((tblfn-hline-p row)
-        (cl-incf count-before-last-hline count)
+        (tblfn-incf count-before-last-hline count)
         (setq count 0
               has-hline t))
        ((tblfn-data-row-p row)
-        (cl-incf count))))
+        (tblfn-incf count))))
     (if has-hline count-before-last-hline count)))
 ;; TEST: (tblfn-body-row-count nil) => 0
 ;; TEST: (tblfn-body-row-count '((1) hline (2) (3))) => 2
@@ -1091,7 +1109,7 @@ When NOERROR is non-nil, return nil instead of signaling an error if
 ROW-INDEX is out of range."
   (when (< row-index 0)
     ;; Count only when negative
-    (cl-incf row-index (tblfn-body-row-count table)))
+    (tblfn-incf row-index (tblfn-body-row-count table)))
   (if (>= row-index 0)
       (let* ((found-hline nil)
              (rest (tblfn-after-header table))
@@ -1112,10 +1130,10 @@ ROW-INDEX is out of range."
                            (unless noerror
                              (signal 'args-out-of-range (list row-index)))
                            nil)))
-                (cl-incf index-in-body))
+                (tblfn-incf index-in-body))
                ((tblfn-hline-p row)
                 (setq found-hline t))))
-            (cl-incf index-in-table))
+            (tblfn-incf index-in-table))
           (unless noerror
             (signal 'args-out-of-range (list row-index)))
           nil))
@@ -1196,7 +1214,7 @@ taking rows."
             (setq next-hline (memq 'hline rest)))
            ((tblfn-data-row-p row)
             (push row result)
-            (cl-decf count)))))
+            (tblfn-decf count)))))
 
       (cons
        ;; Body only
@@ -1365,7 +1383,7 @@ The returned table does not include the footer."
                               (setq row-indices (cdr row-indices)))
                             (unless (eq count (car row-indices))
                               (push row result))
-                            (cl-incf count)))
+                            (tblfn-incf count)))
      (nreverse result))
    table))
 ;; TEST: (tblfn-remove-nth-body-row '(("A") hline (0) (1) (2) (3) (4) (5) (6)) 4 2)
@@ -1594,7 +1612,7 @@ the condition."
     (tblfn-mapc-body-row table
                          (lambda (row)
                            (when (funcall pred row)
-                             (cl-incf count))))
+                             (tblfn-incf count))))
     count))
 ;; TEST: (tblfn-count-if '(("Product" "Category" "Price") ("Apple" "Fruit" "150") ("Tomato" "Vegetable" "200") ("Cheese" "Dairy" "450") ("Banana" "Fruit" "80") ("Potato" "Vegetable" "80") ("Beef" "Meat" "800")) '(equal Category "Vegetable")) => 2
 
@@ -2649,7 +2667,7 @@ Example:
                do (setq value-spec
                         (list value-spec vfun :calcopt calcopt))
                ;; COLSPEC-OR-FUNCTION [VFUN [NEW-COLNAME]] [:calcopt CALCOPT]
-               for keyword-args = (cl-member-if #'keywordp (cdr value-spec))
+               for keyword-args = (tblfn-member-if #'keywordp (cdr value-spec))
                for positional-args = (cl-ldiff value-spec keyword-args)
                for value-colspec = (pop positional-args)
                for value-vfun = (or (pop positional-args) vfun)
@@ -2779,7 +2797,7 @@ This is similar to SQL's \"SELECT col, COUNT(*) FROM table GROUP BY col\"."
           (let* ((key (funcall key-function row))
                  (cons-cell (or (assoc key alist)
                                 (car (push (list key 0) alist)))))
-            (cl-incf (cadr cons-cell)))))
+            (tblfn-incf (cadr cons-cell)))))
        (nreverse alist))
      (list new-key-colname new-count-colname)
      table)))
@@ -3820,7 +3838,7 @@ If END is not found in the list starting from START, return the total
 number of elements from START to the end of the list."
   (let ((count 0))
     (while (and start (not (eq start end)))
-      (cl-incf count)
+      (tblfn-incf count)
       (setq start (cdr start)))
     count))
 ;; TEST: (let ((lst '(1 2 3 4 5))) (tblfn-count-between lst lst)) => 0
@@ -3833,13 +3851,13 @@ number of elements from START to the end of the list."
 
 (defun tblfn-find-nth-element-and-after (list element index)
   (when (< index 0)
-    (cl-incf index (cl-count element list :test #'equal)))
+    (tblfn-incf index (cl-count element list :test #'equal)))
 
   (while (and list
               (setq list (cl-member element list :test #'equal))
               (> index 0))
     (setq list (cdr list))
-    (cl-decf index))
+    (tblfn-decf index))
   list)
 
 (defun tblfn-slice (list start-index &optional end-index)
@@ -3911,7 +3929,7 @@ Return nil if COUNT is 0 or negative."
       (setq index (if include-end len 0)))
 
     (when (< index 0)
-      (cl-incf index len))
+      (tblfn-incf index len))
     (if (and (>= index 0)
              (if include-end
                  (<= index len)
@@ -3924,7 +3942,7 @@ Return nil if COUNT is 0 or negative."
 (defun tblfn-normalize-index-clamp (len index)
   (unless index (setq index len))
   (when (< index 0)
-    (cl-incf index len))
+    (tblfn-incf index len))
   (cond
    ((< index 0) 0)
    ((< index len) index)
