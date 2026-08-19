@@ -3700,21 +3700,20 @@ alternating keywords and values. The valid properties are as follows:
     fields (i.e. ()=nil).
     By default, a blank line becomes a row with one field
     containing an empty string (i.e. (\"\"))."
-  (let ((blank-line-as-nil (plist-get option-plist :blank-line-as-nil))
-        lines)
-    (while (not (eobp))
-      (if (and blank-line-as-nil (eolp))
-          ;; Treat empty lines simply as nil.
-          ;; Under RFC 4180, an empty line is a record containing a
-          ;; single field with an empty string (i.e., ("")); however,
-          ;; since some CSV files use empty lines as data delimiters,
-          ;; it is convenient to treat them as records with zero
-          ;; fields (i.e., nil).
-          (progn
-            (push nil lines)
-            (tblfn-read-line-break))
-        (push (tblfn-read-csv-record) lines)))
-    (nreverse lines)))
+  (let ((blank-line-as-nil (plist-get option-plist :blank-line-as-nil)))
+    (cl-loop until (eobp)
+             collect
+             (if (and blank-line-as-nil (eolp))
+                 ;; Treat empty lines simply as nil.  Under RFC 4180,
+                 ;; an empty line is a record containing a single
+                 ;; field with an empty string (i.e., ("")); however,
+                 ;; since some CSV files use empty lines as data
+                 ;; delimiters, it is convenient to treat them as
+                 ;; records with zero fields (i.e., nil).
+                 (progn
+                   (tblfn-read-line-break)
+                   nil)
+               (tblfn-read-csv-record)))))
 ;; TEST: (with-temp-buffer (tblfn-read-csv-buffer)) => nil
 ;; TEST: (with-temp-buffer (save-excursion (insert "z")) (tblfn-read-csv-buffer)) => (("z"))
 ;; TEST: (with-temp-buffer (save-excursion (insert "\n")) (tblfn-read-csv-buffer)) => ((""))
@@ -3741,15 +3740,15 @@ alternating keywords and values. The valid properties are as follows:
 
 (defun tblfn-read-csv-field ()
   (looking-at tblfn-csv-field-regexp) ;; Always matches
-  (prog1
-      (if (match-beginning 1)
-          (let ((quoted (match-string-no-properties 1))
-                (after-quote (match-string-no-properties 2)))
-            (concat (replace-regexp-in-string "\"\"" "\"" quoted t t)
-                    after-quote))
-        (match-string-no-properties 3))
-    (goto-char (match-end 0))))
+  (goto-char (match-end 0))
+  (if (match-beginning 1)
+      (let ((quoted (match-string-no-properties 1))
+            (after-quote (match-string-no-properties 2)))
+        (concat (replace-regexp-in-string "\"\"" "\"" quoted t t)
+                after-quote))
+    (match-string-no-properties 3)))
 ;; TEST: (with-temp-buffer (insert "\"\nab\ncd\nef\"ghij,13\" laptop\n") (goto-char (point-min)) (list (tblfn-read-csv-field) (progn (forward-char) (tblfn-read-csv-field)))) => ("\nab\ncd\nefghij" "13\" laptop")
+;; TEST: (with-temp-buffer (insert "\"abc\"\"def\"\"ghi\",13\n") (goto-char (point-min)) (list (tblfn-read-csv-field) (progn (forward-char) (tblfn-read-csv-field)))) => ("abc\"def\"ghi" "13")
 
 (defun tblfn-read-line-break ()
   (pcase (char-after)
